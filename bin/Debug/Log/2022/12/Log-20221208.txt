@@ -1,0 +1,13 @@
+[ERROR]	2022-12-08	16:44:56:215	This row already belongs to this table.	SAP.QuickCopyUDF.frm_Main>	59
+[ERROR]	2022-12-08	16:45:18:004	This row already belongs to this table.	SAP.QuickCopyUDF.frm_Main>	59
+[ERROR]	2022-12-08	16:46:44:856	This row already belongs to this table.	SAP.QuickCopyUDF.frm_Main>	58
+[ERROR]	2022-12-08	16:48:18:415	Value cannot be null.
+Parameter name: connectionString	SAP.QuickCopyUDF.frm_Main>	1001
+[ERROR]	2022-12-08	16:50:57:213	Value cannot be null.
+Parameter name: connectionString	SAP.QuickCopyUDF.frm_Main>	0
+[ERROR]	2022-12-08	16:51:08:207	Value cannot be null.
+Parameter name: connectionString	SAP.QuickCopyUDF.frm_Main>	0
+[ERROR]	2022-12-08	17:01:29:567	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 258)	SAP.QuickCopyUDF.frm_Main>	0
+[ERROR]	2022-12-08	17:02:12:854	invalid column name: TABLEID: line 3 col 155 (at pos 239)	SAP.QuickCopyUDF.frm_Main>	0
+[ERROR]	2022-12-08	17:09:02:897	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	SELECT * FROM UFD1 WHERE TableID IN ('@DLO2'); 	invalid column name: TABLEID: line 3 col 110 (at pos 194)
+[ERROR]	2022-12-08	17:10:05:936	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	SELECT * FROM UFD1 WHERE TableID IN ('@DLO3'); 	invalid column name: TABLEID: line 3 col 110 (at pos 194)

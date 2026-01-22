@@ -1,0 +1,5 @@
+[ERROR]	2022-09-13	08:32:15:075	Column 'AliasID' does not belong to table Table.	SAP.QuickCopyUDF.frm_Main>	523
+[ERROR]	2022-09-13	08:32:56:185	Column 'AliasID' does not belong to table Table.	SAP.QuickCopyUDF.frm_Main>	523
+[ERROR]	2022-09-13	14:01:09:408	Column 'AliasID' does not belong to table Table.	SAP.QuickCopyUDF.frm_Main>	547
+[ERROR]	2022-09-13	14:05:22:229	Column 'ColEdit' does not belong to table Table.	SAP.QuickCopyUDF.frm_Main>	594
+[ERROR]	2022-09-13	14:51:18:878	Cannot find table 1.	SAP.QuickCopyUDF.frm_Main>	412

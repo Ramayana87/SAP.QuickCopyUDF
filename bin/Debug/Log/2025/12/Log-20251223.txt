@@ -1,0 +1,9 @@
+[ERROR]	2025-12-23	08:34:10:106	invalid schema name: SBO_SONHA_DEV: line 1 col 12 (at pos 11)
+[ERROR]	2025-12-23	08:34:15:614	invalid schema name: SBO_SONHA_DEV: line 1 col 12 (at pos 11)
+[ERROR]	2025-12-23	08:35:58:228	invalid table name:  Could not find table/view @OUTB in schema SBO_SHS_GOLIVE: line 3 col 101 (at pos 185)
+[ERROR]	2025-12-23	09:27:20:128	Input string was not in a correct format.Couldn't store <Tbl Num> in TblNum Column.  Expected type is Int32.
+[ERROR]	2025-12-23	09:28:01:047	Input string was not in a correct format.Couldn't store <Tbl Num> in TblNum Column.  Expected type is Int32.
+[ERROR]	2025-12-23	09:53:07:626	invalid schema name: SBO_BPB_GOLIVE: line 1 col 12 (at pos 11)		Server = 172.16.8.40:30115;CS=SBO_BPB_GOLIVE; UserID = DEVSAP; Password = Apzon@123; Pooling=false;Max Pool Size=50;Min Pool Size=5
+[ERROR]	2025-12-23	09:55:20:855	String was not recognized as a valid DateTime.Couldn't store <18/12/2025> in LstUpdDate Column.  Expected type is DateTime.
+[ERROR]	2025-12-23	09:55:51:373	String was not recognized as a valid DateTime.Couldn't store <18/12/2025> in LstUpdDate Column.  Expected type is DateTime.
+[WATCH]	2025-12-23	10:30:49:260	OORS	ReceiveSample	

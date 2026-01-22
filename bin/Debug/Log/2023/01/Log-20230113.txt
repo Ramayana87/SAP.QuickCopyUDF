@@ -1,0 +1,1 @@
+[ERROR]	2023-01-13	11:31:22:479	Invalid object name 'APZ_OCTA'.	SAP.QuickCopyUDF.frm_Main>	1083
