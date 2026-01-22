@@ -1,0 +1,8 @@
+[ERROR]	2023-03-31	10:00:25:381	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	select * from APZ_OUDR	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 266)
+[ERROR]	2023-03-31	10:00:26:610	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	select * from APZ_OUDR	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 266)
+[ERROR]	2023-03-31	10:00:26:983	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	select * from APZ_OUDR	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 266)
+[ERROR]	2023-03-31	10:01:35:735	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	select * from APZ_OUDR	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 266)
+[ERROR]	2023-03-31	10:10:03:052	Invalid object name 'OADM'.		Data Source=172.16.8.21\V101; Initial Catalog=VHM_UDF; Persist Security Info=True; User ID=sa; Password=Apzon@123; 
+[ERROR]	2023-03-31	10:10:08:350	Invalid object name 'OADM'.		Data Source=172.16.8.21\V101; Initial Catalog=VHM_UDF; Persist Security Info=True; User ID=sa; Password=Apzon@123; 
+[ERROR]	2023-03-31	10:10:35:068	Invalid object name 'OFST'.		Data Source=172.16.8.21\V101; Initial Catalog=VHM_UDF; Persist Security Info=True; User ID=sa; Password=Apzon@123; 
+[ERROR]	2023-03-31	10:11:01:427	Cannot open database "VHM_HCM" requested by the login. The login failed.Login failed for user 'sa'.		Data Source=172.16.8.21\V101; Initial Catalog=VHM_HCM; Persist Security Info=True; User ID=sa; Password=Apzon@123; 

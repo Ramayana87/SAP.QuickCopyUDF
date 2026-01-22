@@ -1,0 +1,4 @@
+[ERROR]	2022-12-15	14:28:05:374	Invalid object name 'OUTB'.	SAP.QuickCopyUDF.frm_Main>	909
+[ERROR]	2022-12-15	14:29:13:657	Invalid object name 'OUTB'.	SAP.QuickCopyUDF.frm_Main>	909
+[ERROR]	2022-12-15	14:30:38:321	Invalid object name 'OUTB'.	SAP.QuickCopyUDF.frm_Main>	0
+[ERROR]	2022-12-15	14:30:38:347	Invalid object name 'OUTB'.	SAP.QuickCopyUDF.frm_Main>	0
