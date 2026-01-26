@@ -38,9 +38,38 @@ namespace SAP.QuickCopyUDF
 
         public string sourceType { get; set; }
 
+        public string targetServiceType { get; set; }
+
+        public SAPbobsCOM.Company oCompany;
+
         public frm_Main()
         {
             InitializeComponent();
+        }
+
+        private void ReleaseCompanyObject()
+        {
+            if (oCompany != null)
+            {
+                if (oCompany.Connected)
+                {
+                    oCompany.Disconnect();
+                }
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
+                oCompany = null;
+            }
+        }
+
+        private bool IsConnected()
+        {
+            if (targetServiceType.Equals("DI"))
+            {
+                return oCompany != null && oCompany.Connected;
+            }
+            else
+            {
+                return !string.IsNullOrEmpty(SessionId);
+            }
         }
 
         private void frm_Home_Load(object sender, EventArgs e)
@@ -60,6 +89,20 @@ namespace SAP.QuickCopyUDF
                 dtServerType.Rows.Add(rowNewH);
                 txtServerType.Properties.DataSource = dtServerType;
                 txtServerType.EditValue = "S";
+
+                var dtTargetServiceType = new DataTable();
+                dtTargetServiceType.Columns.Add("Code", typeof(string));
+                dtTargetServiceType.Columns.Add("Name", typeof(string));
+                var rowSL = dtTargetServiceType.NewRow();
+                rowSL[0] = "SL";
+                rowSL[1] = "HANA Service Layer";
+                dtTargetServiceType.Rows.Add(rowSL);
+                var rowDI = dtTargetServiceType.NewRow();
+                rowDI[0] = "DI";
+                rowDI[1] = "DI API Service";
+                dtTargetServiceType.Rows.Add(rowDI);
+                txtTargetServiceType.Properties.DataSource = dtTargetServiceType;
+                txtTargetServiceType.EditValue = "SL";
 
                 txt_Sql_Server.Text = Function.ToString(ConfigurationManager.AppSettings["Source_Server"]);
                 txt_Sql_Database.Text = Function.ToString(ConfigurationManager.AppSettings["Source_DB"]);
@@ -97,9 +140,10 @@ namespace SAP.QuickCopyUDF
             {
                 btn_Login.Enabled = false;
                 GetConnectionString();
+                targetServiceType = Function.ToString(txtTargetServiceType.EditValue);
                 var ret = Login();
                 richTextBox1.Text = ret + "\t" + SessionId;
-                if (!string.IsNullOrEmpty(SessionId))
+                if (IsConnected())
                 {
                     btn_CreateUDT.Enabled = true;
                     btn_CreateUDF.Enabled = true;
@@ -119,6 +163,18 @@ namespace SAP.QuickCopyUDF
         }
 
         public string Login()
+        {
+            if (targetServiceType.Equals("DI"))
+            {
+                return LoginDI();
+            }
+            else
+            {
+                return LoginServiceLayer();
+            }
+        }
+
+        public string LoginServiceLayer()
         {
 
             var jsonString = string.Format(@"{{""CompanyDB"": ""{0}"",""Password"":""{1}"",""UserName"":""{2}""}}", txt_Hana_Database.Text, txt_SapPass.Text, txt_SapUser.Text);
@@ -141,6 +197,41 @@ namespace SAP.QuickCopyUDF
                 return string.Format("{0}-{1}", result.error.code, result.error.message.value);
             }
             return string.Format("Login failed. {0}", response.ErrorMessage);
+        }
+
+        public string LoginDI()
+        {
+            try
+            {
+                // Release existing connection if any
+                ReleaseCompanyObject();
+                
+                oCompany = new SAPbobsCOM.Company();
+                oCompany.Server = txt_ServerHana.Text;
+                oCompany.CompanyDB = txt_Hana_Database.Text;
+                oCompany.UserName = txt_SapUser.Text;
+                oCompany.Password = txt_SapPass.Text;
+                oCompany.DbServerType = SAPbobsCOM.BoDataServerTypes.dst_HANADB;
+                oCompany.language = SAPbobsCOM.BoSuppLangs.ln_English;
+                oCompany.UseTrusted = false;
+
+                int lRetCode = oCompany.Connect();
+                if (lRetCode != 0)
+                {
+                    int errCode;
+                    string errMsg;
+                    oCompany.GetLastError(out errCode, out errMsg);
+                    return string.Format("DI API Connection failed: {0} - {1}", errCode, errMsg);
+                }
+
+                SessionId = "DI_CONNECTED";
+                return string.Empty;
+            }
+            catch (Exception ex)
+            {
+                Logging.Write(Logging.ERROR, ex);
+                return string.Format("DI API Connection failed: {0}", ex.Message);
+            }
         }
 
         private void btn_CreateUDT_Click(object sender, EventArgs e)
@@ -176,7 +267,15 @@ namespace SAP.QuickCopyUDF
                     foreach (DataRow item in dt.Rows)
                     {
                         if (CheckExistTable(Function.ToString(item["TableName"]))) continue;
-                        var ret = AddUdt(item);
+                        string ret;
+                        if (targetServiceType.Equals("DI"))
+                        {
+                            ret = AddUdt_DI(item);
+                        }
+                        else
+                        {
+                            ret = AddUdt(item);
+                        }
                         var error1 = richTextBox1.Text;
                         error1 += "\n" + ret;
                         richTextBox1.Text = error1;
@@ -238,6 +337,74 @@ namespace SAP.QuickCopyUDF
             {
                 Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
                 return Function.ToString(row["TableName"]) + "\t" + ex.Message;
+            }
+        }
+
+        protected string AddUdt_DI(DataRow row)
+        {
+            SAPbobsCOM.UserTablesMD oUserTablesMD = null;
+            try
+            {
+                oUserTablesMD = (SAPbobsCOM.UserTablesMD)oCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oUserTables);
+                oUserTablesMD.TableName = Function.ToString(row["TableName"]);
+                oUserTablesMD.TableDescription = Function.ToString(row["Descr"]);
+                
+                switch (Function.ParseInt(row["ObjectType"]))
+                {
+                    case 0:
+                        oUserTablesMD.TableType = SAPbobsCOM.BoUTBTableType.bott_NoObject;
+                        break;
+                    case 1:
+                        oUserTablesMD.TableType = SAPbobsCOM.BoUTBTableType.bott_MasterData;
+                        break;
+                    case 2:
+                        oUserTablesMD.TableType = SAPbobsCOM.BoUTBTableType.bott_MasterDataLines;
+                        break;
+                    case 3:
+                        oUserTablesMD.TableType = SAPbobsCOM.BoUTBTableType.bott_Document;
+                        break;
+                    case 4:
+                        oUserTablesMD.TableType = SAPbobsCOM.BoUTBTableType.bott_DocumentLines;
+                        break;
+                }
+
+                if (Function.ToString(row["Archivable"]).Equals("Y"))
+                {
+                    oUserTablesMD.Archivable = Function.ParseInt(row["ObjectType"]) == 0 ? SAPbobsCOM.BoYesNoEnum.tNO : SAPbobsCOM.BoYesNoEnum.tYES;
+                }
+                else
+                {
+                    oUserTablesMD.Archivable = SAPbobsCOM.BoYesNoEnum.tNO;
+                }
+                
+                if (!string.IsNullOrEmpty(Function.ToString(row["ArchivDate"])))
+                {
+                    oUserTablesMD.ArchiveDateField = Function.ToString(row["ArchivDate"]);
+                }
+
+                int lRetCode = oUserTablesMD.Add();
+                if (lRetCode != 0)
+                {
+                    int errCode;
+                    string errMsg;
+                    oCompany.GetLastError(out errCode, out errMsg);
+                    return Function.ToString(row["TableName"]) + "\t" + string.Format("Error {0}: {1}", errCode, errMsg);
+                }
+
+                return Function.ToString(row["TableName"]) + "\tSuccess";
+            }
+            catch (Exception ex)
+            {
+                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                return Function.ToString(row["TableName"]) + "\t" + ex.Message;
+            }
+            finally
+            {
+                if (oUserTablesMD != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oUserTablesMD);
+                    oUserTablesMD = null;
+                }
             }
         }
 
@@ -358,7 +525,15 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
-                        var ret = AddUdf(field);
+                        string ret;
+                        if (targetServiceType.Equals("DI"))
+                        {
+                            ret = AddUdf_DI(field);
+                        }
+                        else
+                        {
+                            ret = AddUdf(field);
+                        }
                         var error1 = richTextBox1.Text;
                         error1 += "\n" + ret;
                         richTextBox1.Text = error1;
@@ -437,6 +612,82 @@ namespace SAP.QuickCopyUDF
             {
                 Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
                 return field.TableName + "." + field.Name + "\t" + ex.Message;
+            }
+        }
+
+        public string AddUdf_DI(UserFieldsImpl field)
+        {
+            SAPbobsCOM.UserFieldsMD oUserFieldsMD = null;
+            try
+            {
+                oUserFieldsMD = (SAPbobsCOM.UserFieldsMD)oCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oUserFields);
+                oUserFieldsMD.TableName = field.TableName;
+                oUserFieldsMD.Name = field.Name;
+                oUserFieldsMD.Description = field.Description;
+                oUserFieldsMD.Type = field.Type;
+                oUserFieldsMD.SubType = field.SubType;
+                oUserFieldsMD.EditSize = field.EditSize;
+                oUserFieldsMD.Size = field.Size;
+                oUserFieldsMD.Mandatory = field.Mandatory;
+
+                if (!string.IsNullOrEmpty(field.LinkedTable))
+                {
+                    oUserFieldsMD.LinkedTable = field.LinkedTable;
+                }
+                if (!string.IsNullOrEmpty(field.DefaultValue))
+                {
+                    oUserFieldsMD.DefaultValue = field.DefaultValue;
+                }
+                if (!string.IsNullOrEmpty(field.LinkedUDO))
+                {
+                    oUserFieldsMD.LinkedUDO = field.LinkedUDO;
+                }
+
+                if (field.ValidValues != null && field.ValidValues.Count > 0)
+                {
+                    for (int i = 0; i < field.ValidValues.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            oUserFieldsMD.ValidValues.Add();
+                        }
+                        oUserFieldsMD.ValidValues.SetCurrentLine(i);
+                        
+                        if (field.SubType == BoFldSubTypes.st_Time)
+                        {
+                            oUserFieldsMD.ValidValues.Value = Function.ParseInt(field.ValidValues[i].Value.Replace(":", "")).ToString("0000");
+                        }
+                        else
+                        {
+                            oUserFieldsMD.ValidValues.Value = field.ValidValues[i].Value;
+                        }
+                        oUserFieldsMD.ValidValues.Description = field.ValidValues[i].Description;
+                    }
+                }
+
+                int lRetCode = oUserFieldsMD.Add();
+                if (lRetCode != 0)
+                {
+                    int errCode;
+                    string errMsg;
+                    oCompany.GetLastError(out errCode, out errMsg);
+                    return field.TableName + "\t" + field.Name + "\t" + string.Format("Error {0}: {1}", errCode, errMsg);
+                }
+
+                return field.TableName + "\t" + field.Name + "\tSuccess";
+            }
+            catch (Exception ex)
+            {
+                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                return field.TableName + "." + field.Name + "\t" + ex.Message;
+            }
+            finally
+            {
+                if (oUserFieldsMD != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oUserFieldsMD);
+                    oUserFieldsMD = null;
+                }
             }
         }
 
@@ -943,14 +1194,30 @@ namespace SAP.QuickCopyUDF
                         //kiểm tra UDO đã có hay chưa, nếu chưa thì add
                         if (!CheckExistUDO(udo.Code))
                         {
-                            var ret = AddUdo(udo);
+                            string ret;
+                            if (targetServiceType.Equals("DI"))
+                            {
+                                ret = AddUdo_DI(udo);
+                            }
+                            else
+                            {
+                                ret = AddUdo(udo);
+                            }
                             var error1 = richTextBox1.Text;
                             error1 += "\n" + "ADD UDO" + "\t" + ret;
                             richTextBox1.Text = error1;
                         }
                         else
                         {
-                            var ret = UpdateUdo(udo);
+                            string ret;
+                            if (targetServiceType.Equals("DI"))
+                            {
+                                ret = UpdateUdo_DI(udo);
+                            }
+                            else
+                            {
+                                ret = UpdateUdo(udo);
+                            }
                             var error1 = richTextBox1.Text;
                             error1 += "\n" + "UPDATE UDO" + "\t" + ret;
                             richTextBox1.Text = error1;
@@ -1201,6 +1468,164 @@ namespace SAP.QuickCopyUDF
             {
                 Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
                 return udo.Code + "\t" + udo.Name + "\t" + ex.Message;
+            }
+        }
+
+        public string AddUdo_DI(UserObjectsImpl udo)
+        {
+            SAPbobsCOM.UserObjectsMD oUserObjectsMD = null;
+            try
+            {
+                oUserObjectsMD = (SAPbobsCOM.UserObjectsMD)oCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oUserObjectsMD);
+                oUserObjectsMD.Code = udo.Code;
+                oUserObjectsMD.Name = udo.Name;
+                oUserObjectsMD.TableName = udo.TableName;
+                oUserObjectsMD.ObjectType = udo.ObjectType;
+                oUserObjectsMD.CanCancel = udo.CanCancel;
+                oUserObjectsMD.CanClose = udo.CanClose;
+                oUserObjectsMD.CanCreateDefaultForm = udo.CanCreateDefaultForm;
+                oUserObjectsMD.CanDelete = udo.CanDelete;
+                oUserObjectsMD.CanFind = udo.CanFind;
+                oUserObjectsMD.CanLog = udo.CanLog;
+                oUserObjectsMD.ManageSeries = udo.ManageSeries;
+                oUserObjectsMD.CanYearTransfer = udo.CanYearTransfer;
+                oUserObjectsMD.CanArchive = udo.CanArchive;
+                oUserObjectsMD.LogTableName = udo.LogTableName;
+                oUserObjectsMD.OverwriteDllfile = udo.OverwriteDllfile;
+                oUserObjectsMD.UseUniqueFormType = udo.UseUniqueFormType;
+                oUserObjectsMD.MenuItem = udo.MenuItem;
+                oUserObjectsMD.MenuCaption = udo.MenuCaption;
+                oUserObjectsMD.FatherMenuID = udo.FatherMenuID;
+                oUserObjectsMD.Position = udo.Position;
+                oUserObjectsMD.EnableEnhancedForm = udo.EnableEnhancedForm;
+                oUserObjectsMD.RebuildEnhancedForm = udo.RebuildEnhancedForm;
+                oUserObjectsMD.FormSRF = udo.FormSRF;
+                oUserObjectsMD.MenuUID = udo.MenuUID;
+
+                // Add child tables
+                if (udo.ChildTables != null && udo.ChildTables.Count > 0)
+                {
+                    for (int i = 0; i < udo.ChildTables.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            oUserObjectsMD.ChildTables.Add();
+                        }
+                        oUserObjectsMD.ChildTables.SetCurrentLine(i);
+                        oUserObjectsMD.ChildTables.SonNumber = udo.ChildTables[i].SonNumber;
+                        oUserObjectsMD.ChildTables.TableName = udo.ChildTables[i].TableName;
+                        oUserObjectsMD.ChildTables.LogTableName = udo.ChildTables[i].LogTableName;
+                        oUserObjectsMD.ChildTables.ObjectName = udo.ChildTables[i].ObjectName;
+                    }
+                }
+
+                // Add find columns
+                if (udo.FindColumns != null && udo.FindColumns.Count > 0)
+                {
+                    for (int i = 0; i < udo.FindColumns.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            oUserObjectsMD.FindColumns.Add();
+                        }
+                        oUserObjectsMD.FindColumns.SetCurrentLine(i);
+                        oUserObjectsMD.FindColumns.ColumnNumber = udo.FindColumns[i].ColumnNumber;
+                        oUserObjectsMD.FindColumns.ColumnAlias = udo.FindColumns[i].ColumnAlias;
+                        oUserObjectsMD.FindColumns.ColumnDescription = udo.FindColumns[i].ColumnDescription;
+                    }
+                }
+
+                // Add form columns
+                if (udo.FormColumns != null && udo.FormColumns.Count > 0)
+                {
+                    for (int i = 0; i < udo.FormColumns.Count; i++)
+                    {
+                        if (i > 0)
+                        {
+                            oUserObjectsMD.FormColumns.Add();
+                        }
+                        oUserObjectsMD.FormColumns.SetCurrentLine(i);
+                        oUserObjectsMD.FormColumns.SonNumber = udo.FormColumns[i].SonNumber;
+                        oUserObjectsMD.FormColumns.FormColumnNumber = udo.FormColumns[i].FormColumnNumber;
+                        oUserObjectsMD.FormColumns.FormColumnAlias = udo.FormColumns[i].FormColumnAlias;
+                        oUserObjectsMD.FormColumns.FormColumnDescription = udo.FormColumns[i].FormColumnDescription;
+                        oUserObjectsMD.FormColumns.Editable = udo.FormColumns[i].Editable;
+                    }
+                }
+
+                int lRetCode = oUserObjectsMD.Add();
+                if (lRetCode != 0)
+                {
+                    int errCode;
+                    string errMsg;
+                    oCompany.GetLastError(out errCode, out errMsg);
+                    return udo.Code + "\t" + udo.Name + "\t" + string.Format("Error {0}: {1}", errCode, errMsg);
+                }
+
+                return udo.Code + "\t" + udo.Name + "\tSuccess";
+            }
+            catch (Exception ex)
+            {
+                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                return udo.Code + "\t" + udo.Name + "\t" + ex.Message;
+            }
+            finally
+            {
+                if (oUserObjectsMD != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oUserObjectsMD);
+                    oUserObjectsMD = null;
+                }
+            }
+        }
+
+        public string UpdateUdo_DI(UserObjectsImpl udo)
+        {
+            SAPbobsCOM.UserObjectsMD oUserObjectsMD = null;
+            try
+            {
+                oUserObjectsMD = (SAPbobsCOM.UserObjectsMD)oCompany.GetBusinessObject(SAPbobsCOM.BoObjectTypes.oUserObjectsMD);
+                
+                if (oUserObjectsMD.GetByKey(udo.Code))
+                {
+                    oUserObjectsMD.Name = udo.Name;
+                    oUserObjectsMD.CanCancel = udo.CanCancel;
+                    oUserObjectsMD.CanClose = udo.CanClose;
+                    oUserObjectsMD.CanDelete = udo.CanDelete;
+                    oUserObjectsMD.CanFind = udo.CanFind;
+                    oUserObjectsMD.MenuItem = udo.MenuItem;
+                    oUserObjectsMD.MenuCaption = udo.MenuCaption;
+                    oUserObjectsMD.FatherMenuID = udo.FatherMenuID;
+                    oUserObjectsMD.Position = udo.Position;
+
+                    int lRetCode = oUserObjectsMD.Update();
+                    if (lRetCode != 0)
+                    {
+                        int errCode;
+                        string errMsg;
+                        oCompany.GetLastError(out errCode, out errMsg);
+                        return udo.Code + "\t" + udo.Name + "\t" + string.Format("Error {0}: {1}", errCode, errMsg);
+                    }
+
+                    return udo.Code + "\t" + udo.Name + "\tSuccess";
+                }
+                else
+                {
+                    return udo.Code + "\t" + udo.Name + "\tUDO not found";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                return udo.Code + "\t" + udo.Name + "\t" + ex.Message;
+            }
+            finally
+            {
+                if (oUserObjectsMD != null)
+                {
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oUserObjectsMD);
+                    oUserObjectsMD = null;
+                }
             }
         }
 
@@ -1532,7 +1957,23 @@ namespace SAP.QuickCopyUDF
             {
                 btn_LogOut.Enabled = false;
                 GetConnectionString();
-                if (!string.IsNullOrEmpty(SessionId))
+                
+                if (targetServiceType.Equals("DI"))
+                {
+                    if (oCompany != null && oCompany.Connected)
+                    {
+                        ReleaseCompanyObject();
+                        richTextBox1.Text = "LogOut DI API" + "\t" + "SUCCESS!";
+                        SessionId = "";
+                        btn_CreateUDT.Enabled = false;
+                        btn_CreateUDF.Enabled = false;
+                        btn_CreateUDO.Enabled = false;
+                        btn_LinkUDF.Enabled = false;
+                        btn_UpdateUDF.Enabled = false;
+                        btn_DelUDF.Enabled = false;
+                    }
+                }
+                else if (!string.IsNullOrEmpty(SessionId))
                 {
                     var response = GetResponseService("Logout", "");
                     if (string.IsNullOrEmpty(response.Content))

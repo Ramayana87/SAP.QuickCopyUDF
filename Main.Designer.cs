@@ -18,6 +18,10 @@ namespace SAP.QuickCopyUDF
             {
                 components.Dispose();
             }
+            
+            // Release COM object using helper method
+            ReleaseCompanyObject();
+            
             base.Dispose(disposing);
         }
 
@@ -71,7 +75,10 @@ namespace SAP.QuickCopyUDF
             this.btn_DelCopy = new System.Windows.Forms.Button();
             this.btn_UpdateUDF = new System.Windows.Forms.Button();
             this.btn_CopyUDOManual = new System.Windows.Forms.Button();
+            this.txtTargetServiceType = new DevExpress.XtraEditors.LookUpEdit();
+            this.labelControl13 = new DevExpress.XtraEditors.LabelControl();
             ((System.ComponentModel.ISupportInitialize)(this.txtServerType.Properties)).BeginInit();
+            ((System.ComponentModel.ISupportInitialize)(this.txtTargetServiceType.Properties)).BeginInit();
             this.SuspendLayout();
             // 
             // btn_CreateUDT
@@ -441,11 +448,35 @@ namespace SAP.QuickCopyUDF
             this.btn_CopyUDOManual.UseVisualStyleBackColor = true;
             this.btn_CopyUDOManual.Click += new System.EventHandler(this.btn_CopyUDOManual_Click);
             // 
+            // txtTargetServiceType
+            // 
+            this.txtTargetServiceType.Location = new System.Drawing.Point(442, 64);
+            this.txtTargetServiceType.Name = "txtTargetServiceType";
+            this.txtTargetServiceType.Properties.Buttons.AddRange(new DevExpress.XtraEditors.Controls.EditorButton[] {
+            new DevExpress.XtraEditors.Controls.EditorButton(DevExpress.XtraEditors.Controls.ButtonPredefines.Combo)});
+            this.txtTargetServiceType.Properties.Columns.AddRange(new DevExpress.XtraEditors.Controls.LookUpColumnInfo[] {
+            new DevExpress.XtraEditors.Controls.LookUpColumnInfo("Name", "Name")});
+            this.txtTargetServiceType.Properties.DisplayMember = "Name";
+            this.txtTargetServiceType.Properties.NullText = "";
+            this.txtTargetServiceType.Properties.ValueMember = "Code";
+            this.txtTargetServiceType.Size = new System.Drawing.Size(205, 20);
+            this.txtTargetServiceType.TabIndex = 49;
+            // 
+            // labelControl13
+            // 
+            this.labelControl13.Location = new System.Drawing.Point(361, 71);
+            this.labelControl13.Name = "labelControl13";
+            this.labelControl13.Size = new System.Drawing.Size(61, 13);
+            this.labelControl13.TabIndex = 50;
+            this.labelControl13.Text = "Service Type";
+            // 
             // frm_Main
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1066, 732);
+            this.Controls.Add(this.labelControl13);
+            this.Controls.Add(this.txtTargetServiceType);
             this.Controls.Add(this.btn_CopyUDOManual);
             this.Controls.Add(this.btn_UpdateUDF);
             this.Controls.Add(this.btn_DelCopy);
@@ -492,6 +523,7 @@ namespace SAP.QuickCopyUDF
             this.Text = "Create UDF, UDT, UDO";
             this.Load += new System.EventHandler(this.frm_Home_Load);
             ((System.ComponentModel.ISupportInitialize)(this.txtServerType.Properties)).EndInit();
+            ((System.ComponentModel.ISupportInitialize)(this.txtTargetServiceType.Properties)).EndInit();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -540,6 +572,8 @@ namespace SAP.QuickCopyUDF
         private System.Windows.Forms.Button btn_DelCopy;
         private System.Windows.Forms.Button btn_UpdateUDF;
         private System.Windows.Forms.Button btn_CopyUDOManual;
+        private DevExpress.XtraEditors.LookUpEdit txtTargetServiceType;
+        private DevExpress.XtraEditors.LabelControl labelControl13;
     }
 }
 
