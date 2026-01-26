@@ -186,6 +186,8 @@ namespace SAP.QuickCopyUDF
                 if (oCompany.Connected)
                 {
                     oCompany.Disconnect();
+                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
+                    oCompany = new SAPbobsCOM.Company();
                 }
 
                 oCompany.Server = txt_ServerHana.Text;
@@ -1944,6 +1946,8 @@ namespace SAP.QuickCopyUDF
                     if (oCompany != null && oCompany.Connected)
                     {
                         oCompany.Disconnect();
+                        System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
+                        oCompany = null;
                         richTextBox1.Text = "LogOut DI API" + "\t" + "SUCCESS!";
                         SessionId = "";
                         btn_CreateUDT.Enabled = false;
