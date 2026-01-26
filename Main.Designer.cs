@@ -70,7 +70,6 @@ namespace SAP.QuickCopyUDF
             this.btn_LogOut = new System.Windows.Forms.Button();
             this.btn_DelCopy = new System.Windows.Forms.Button();
             this.btn_UpdateUDF = new System.Windows.Forms.Button();
-            this.button1 = new System.Windows.Forms.Button();
             this.btn_CopyUDOManual = new System.Windows.Forms.Button();
             ((System.ComponentModel.ISupportInitialize)(this.txtServerType.Properties)).BeginInit();
             this.SuspendLayout();
@@ -432,17 +431,6 @@ namespace SAP.QuickCopyUDF
             this.btn_UpdateUDF.UseVisualStyleBackColor = true;
             this.btn_UpdateUDF.Click += new System.EventHandler(this.btn_UpdateUDF_Click);
             // 
-            // button1
-            // 
-            this.button1.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.button1.Location = new System.Drawing.Point(982, 9);
-            this.button1.Name = "button1";
-            this.button1.Size = new System.Drawing.Size(80, 23);
-            this.button1.TabIndex = 47;
-            this.button1.Text = "TEST SHS";
-            this.button1.UseVisualStyleBackColor = true;
-            this.button1.Click += new System.EventHandler(this.button1_Click);
-            // 
             // btn_CopyUDOManual
             // 
             this.btn_CopyUDOManual.Location = new System.Drawing.Point(937, 140);
@@ -459,7 +447,6 @@ namespace SAP.QuickCopyUDF
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1066, 732);
             this.Controls.Add(this.btn_CopyUDOManual);
-            this.Controls.Add(this.button1);
             this.Controls.Add(this.btn_UpdateUDF);
             this.Controls.Add(this.btn_DelCopy);
             this.Controls.Add(this.btn_LogOut);
@@ -552,7 +539,6 @@ namespace SAP.QuickCopyUDF
         private System.Windows.Forms.Button btn_LogOut;
         private System.Windows.Forms.Button btn_DelCopy;
         private System.Windows.Forms.Button btn_UpdateUDF;
-        private System.Windows.Forms.Button button1;
         private System.Windows.Forms.Button btn_CopyUDOManual;
     }
 }
