@@ -153,8 +153,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM OUTB WHERE TableName IN ({0}); ", tableNames));
                     else
@@ -251,8 +250,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}); SELECT * FROM UFD1 WHERE TableID IN ({0}); ", tableNames));
                     else
@@ -345,8 +343,8 @@ namespace SAP.QuickCopyUDF
                         //field.LinkedUDO = Function.ToString(item["RelUDO"]);
                         field.LinkedObject = Function.ToString(item["RelSO"]);
 
-                        var valid = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["TableID"]) == field.TableName && Function.ParseInt(t["FieldID"]) == field.FieldID);
-                        if (valid.Count() > 0)
+                        var valid = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["TableID"]) == field.TableName && Function.ParseInt(t["FieldID"]) == field.FieldID).ToList();
+                        if (valid.Count > 0)
                         {
                             field.ValidValues = new List<ValidValuesMDImpl>();
                             foreach (var v in valid)
@@ -450,8 +448,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}) AND RelUDO <> '';", tableNames));
                     else
@@ -560,8 +557,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m.Trim() + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}); SELECT * FROM UFD1 WHERE TableID IN ({0}); ", tableNames));
                     else
@@ -625,8 +621,8 @@ namespace SAP.QuickCopyUDF
                         field.LinkedUDO = Function.ToString(item["RelUDO"]);
                         field.LinkedObject = Function.ToString(item["RelSO"]);
 
-                        var valid = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["TableID"]) == field.TableName && Function.ParseInt(t["FieldID"]) == field.FieldID);
-                        if (valid.Count() > 0)
+                        var valid = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["TableID"]) == field.TableName && Function.ParseInt(t["FieldID"]) == field.FieldID).ToList();
+                        if (valid.Count > 0)
                         {
                             field.ValidValues = new List<ValidValuesMDImpl>();
                             foreach (var v in valid)
@@ -739,8 +735,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m.Trim() + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE \"TableID\" IN ({0});", tableNames));
                     else
@@ -799,8 +794,7 @@ namespace SAP.QuickCopyUDF
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(txt_TableName.Text))
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
+                    var tableNames = string.Join(",", txt_TableName.Text.Split(',').Select(m => "'" + m.Trim() + "'"));
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format(@"SELECT * FROM OUDO WHERE Code IN ({0}); " +
                                                         "SELECT * FROM UDO1 WHERE Code IN ({0}); " +
@@ -871,8 +865,8 @@ namespace SAP.QuickCopyUDF
                         udo.FormSRF = Function.ToString(item["NewFormSrf"]);
                         udo.MenuUID = Function.ToString(item["MenuUid"]);
 
-                        var Childs = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code);
-                        if (Childs.Count() > 0)
+                        var Childs = ds.Tables[1].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code).ToList();
+                        if (Childs.Count > 0)
                         {
                             udo.ChildTables = new List<UserObjectChildTableImpl>();
                             foreach (var child in Childs)
@@ -888,8 +882,8 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
-                        var FindColumns = ds.Tables[2].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code);
-                        if (FindColumns.Count() > 0)
+                        var FindColumns = ds.Tables[2].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code).ToList();
+                        if (FindColumns.Count > 0)
                         {
                             udo.FindColumns = new List<UserObjectFindColumnImpl>();
                             foreach (var find in FindColumns)
@@ -904,8 +898,8 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
-                        var FormColumns = ds.Tables[3].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code);
-                        if (FormColumns.Count() > 0)
+                        var FormColumns = ds.Tables[3].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code).ToList();
+                        if (FormColumns.Count > 0)
                         {
                             udo.FormColumns = new List<UserObjectFormColumnImpl>();
                             foreach (var form in FormColumns)
@@ -922,8 +916,8 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
-                        var EnhancedFormColumns = ds.Tables[4].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code);
-                        if (EnhancedFormColumns.Count() > 0)
+                        var EnhancedFormColumns = ds.Tables[4].AsEnumerable().Where(t => Function.ToString(t["Code"]) == udo.Code).ToList();
+                        if (EnhancedFormColumns.Count > 0)
                         {
                             udo.EnhancedFormColumns = new List<UserObjectEnhancedFormColumnImpl>();
                             foreach (var enchanced in EnhancedFormColumns)
@@ -1242,20 +1236,19 @@ namespace SAP.QuickCopyUDF
                 richTextBox1.Text = "";
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
-                var lstTable = tableNames.Split(',').ToList();
-                foreach (var table in lstTable)
+                foreach (var table in tableNames.Split(','))
                 {
                     var dt = new DataTable();
                     if (sourceType.Equals("S"))
-                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table.Trim()));
                     else
-                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table.Trim()));
 
                     if (dt.IsNotNull())
                     {
-                        var ret = _httpClient.BulkCopy(dt, table);
+                        var ret = _httpClient.BulkCopy(dt, table.Trim());
                         var text = richTextBox1.Text;
-                        text += "\n" + table + "\t" + dt.Rows.Count + "\t" + ret;
+                        text += "\n" + table.Trim() + "\t" + dt.Rows.Count + "\t" + ret;
                         richTextBox1.Text = text;
                     }
                     else
@@ -1288,21 +1281,20 @@ namespace SAP.QuickCopyUDF
                 richTextBox1.Text = "";
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
-                var lstTable = tableNames.Split(',').ToList();
-                foreach (var table in lstTable)
+                foreach (var table in tableNames.Split(','))
                 {
                     var dt = new DataTable();
                     if (sourceType.Equals("S"))
-                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table.Trim()));
                     else
-                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table.Trim()));
 
                     if (dt.IsNotNull())
                     {
-                        string sqlDelOldData = string.Format("DELETE FROM \"{0}\";", table);
+                        string sqlDelOldData = string.Format("DELETE FROM \"{0}\";", table.Trim());
                         var rowDel = _httpClient.ExecuteNonQuery(sqlDelOldData);
                         var textDel = richTextBox1.Text;
-                        textDel += "\n" + table + "\t" + "Deleted rows:" + "\t" + rowDel.ToString();
+                        textDel += "\n" + table.Trim() + "\t" + "Deleted rows:" + "\t" + rowDel.ToString();
                         richTextBox1.Text = textDel;
 
                         var ret = _httpClient.BulkCopy(dt, table);

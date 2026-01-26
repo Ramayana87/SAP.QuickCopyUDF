@@ -22,46 +22,48 @@ namespace SAP.QuickCopyUDF
         {
             try
             {
-                var json = @"{";
-                json += Function.GetJsonString("TableName", Function.ToString(row["TableName"]));
-                json += Function.GetJsonString("TableDescription", Function.ToString(row["Descr"]));
+                var sb = new StringBuilder();
+                sb.Append(@"{");
+                sb.Append(Function.GetJsonString("TableName", Function.ToString(row["TableName"])));
+                sb.Append(Function.GetJsonString("TableDescription", Function.ToString(row["Descr"])));
                 switch (Function.ParseInt(row["ObjectType"]))
                 {
                     case 0:
-                        json += Function.GetJsonString("TableType", "bott_NoObject");
+                        sb.Append(Function.GetJsonString("TableType", "bott_NoObject"));
                         break;
                     case 1:
-                        json += Function.GetJsonString("TableType", "bott_MasterData");
+                        sb.Append(Function.GetJsonString("TableType", "bott_MasterData"));
                         break;
                     case 2:
-                        json += Function.GetJsonString("TableType", "bott_MasterDataLines");
+                        sb.Append(Function.GetJsonString("TableType", "bott_MasterDataLines"));
                         break;
                     case 3:
-                        json += Function.GetJsonString("TableType", "bott_Document");
+                        sb.Append(Function.GetJsonString("TableType", "bott_Document"));
                         break;
                     case 4:
-                        json += Function.GetJsonString("TableType", "bott_DocumentLines");
+                        sb.Append(Function.GetJsonString("TableType", "bott_DocumentLines"));
                         break;
                 }
 
                 if (Function.ToString(row["Archivable"]).Equals("Y"))
                 {
-                    json += Function.GetJsonString("Archivable", Function.ParseInt(row["ObjectType"]) == 0 ? "tNO" : "tYES");
+                    sb.Append(Function.GetJsonString("Archivable", Function.ParseInt(row["ObjectType"]) == 0 ? "tNO" : "tYES"));
                 }
                 else
                 {
-                    json += Function.GetJsonString("Archivable", "tNO");
+                    sb.Append(Function.GetJsonString("Archivable", "tNO"));
                 }
-                json += Function.GetJsonString("ArchiveDateField", Function.ToString(row["ArchivDate"]));
-                json += @"}";
+                sb.Append(Function.GetJsonString("ArchiveDateField", Function.ToString(row["ArchivDate"])));
+                sb.Append(@"}");
 
-                var response = GetResponseService("UserTablesMD", json);
+                var response = GetResponseService("UserTablesMD", sb.ToString());
 
                 return Function.ToString(row["TableName"]) + "\t" + response.Content;
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return Function.ToString(row["TableName"]) + "\t" + ex.Message;
             }
         }
@@ -127,7 +129,8 @@ namespace SAP.QuickCopyUDF
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return field.TableName + "." + field.Name + "\t" + ex.Message;
             }
         }
@@ -156,7 +159,8 @@ namespace SAP.QuickCopyUDF
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return field.TableName + "." + field.Name + "\t" + ex.Message;
             }
         }
@@ -226,7 +230,8 @@ namespace SAP.QuickCopyUDF
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return field.TableName + "." + field.Name + "\t" + ex.Message;
             }
         }
@@ -344,7 +349,8 @@ namespace SAP.QuickCopyUDF
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return udo.Code + "\t" + udo.Name + "\t" + ex.Message;
             }
         }
@@ -463,7 +469,8 @@ namespace SAP.QuickCopyUDF
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                Logging.Write(Logging.ERROR, stackTrace.Substring(5, stackTrace.Length - 5), ex.Message);
                 return udo.Code + "\t" + udo.Name + "\t" + ex.Message;
             }
         }
