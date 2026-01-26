@@ -260,16 +260,17 @@ namespace SAP.QuickCopyUDF
                         var adapter = new HanaDataAdapter(command);
                         adapter.Fill(dtSet);
                         command.Parameters.Clear();
-                        conn.Dispose();
                     }
                 }
                 return dtSet;
             }
             catch (Exception ex)
             {
-                Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), query, ex.Message);
+                var stackTrace = new StackTrace(new StackFrame(0)).ToString();
+                var tracePath = stackTrace.Substring(5, stackTrace.Length - 5);
+                Logging.Write(Logging.ERROR, tracePath, query, ex.Message);
                 if (null != ex.InnerException)
-                    Logging.Write(Logging.ERROR, new StackTrace(new StackFrame(0)).ToString().Substring(5, new StackTrace(new StackFrame(0)).ToString().Length - 5), query, Function.ToString(ex.InnerException.Message));
+                    Logging.Write(Logging.ERROR, tracePath, query, Function.ToString(ex.InnerException.Message));
                 throw (ex);
             }
         }
@@ -354,15 +355,17 @@ namespace SAP.QuickCopyUDF
                 {
                     conn.Open();
                 }
-                var command = conn.CreateCommand();
-                command.CommandTimeout = 60000;
-                command.CommandText = commandType == CommandType.Text ? string.Format(@"DO BEGIN 
+                using (var command = conn.CreateCommand())
+                {
+                    command.CommandTimeout = 60000;
+                    command.CommandText = commandType == CommandType.Text ? string.Format(@"DO BEGIN 
                                                                             {0}
                                                     end;", query) : query;
-                command.CommandType = commandType;
-                var result = command.ExecuteScalar();
-                //Logging.Write(Logging.WATCH, "result", Function.ToString(result));
-                return Function.ParseInt(result);
+                    command.CommandType = commandType;
+                    var result = command.ExecuteScalar();
+                    //Logging.Write(Logging.WATCH, "result", Function.ToString(result));
+                    return Function.ParseInt(result);
+                }
             }
         }
 
@@ -388,14 +391,16 @@ namespace SAP.QuickCopyUDF
                 {
                     conn.Open();
                 }
-                var command = conn.CreateCommand();
-                command.CommandTimeout = 60000;
-                command.CommandText = query;
-                command.CommandType = commandType;
-                command.TryAddParameters(lst);
-                var result = command.ExecuteNonQuery();
-                //HanaConnection.ClearPool(conn);
-                return result;
+                using (var command = conn.CreateCommand())
+                {
+                    command.CommandTimeout = 60000;
+                    command.CommandText = query;
+                    command.CommandType = commandType;
+                    command.TryAddParameters(lst);
+                    var result = command.ExecuteNonQuery();
+                    //HanaConnection.ClearPool(conn);
+                    return result;
+                }
             }
         }
         #endregion
@@ -411,11 +416,27 @@ namespace SAP.QuickCopyUDF
         {
             var sql = "";
             var cols = new List<string>();
+            
+            // Calculate max lengths for all columns in a single pass
+            var columnMaxLengths = new Dictionary<int, int>();
+            foreach (DataRow row in dt.Rows)
+            {
+                for (int i = 0; i < dt.Columns.Count; i++)
+                {
+                    var value = row[i]?.ToString();
+                    var len = value?.Length ?? 0;
+                    if (!columnMaxLengths.ContainsKey(i) || columnMaxLengths[i] < len)
+                    {
+                        columnMaxLengths[i] = len;
+                    }
+                }
+            }
+            
             for (var i = 0; i < dt.Columns.Count; i++)
             {
                 var col = dt.Columns[i];
-                var maxValueColumn = dt.AsEnumerable().Max(t => t[col] == null ? "" : t[col].ToString());
-                var item = string.Format(@"""{0}"" {1} {2}", col.ColumnName, GetSqlType(col, maxValueColumn == null ? 50 : maxValueColumn.Length),
+                var maxLength = columnMaxLengths.ContainsKey(i) ? columnMaxLengths[i] : 50;
+                var item = string.Format(@"""{0}"" {1} {2}", col.ColumnName, GetSqlType(col, maxLength),
                     col.AllowDBNull ? "NULL" : "");
                 cols.Add(item);
             }
@@ -471,11 +492,27 @@ namespace SAP.QuickCopyUDF
         {
             var sql = "";
             var cols = new List<string>();
+            
+            // Calculate max lengths for all columns in a single pass
+            var columnMaxLengths = new Dictionary<int, int>();
+            foreach (DataRow row in dt.Rows)
+            {
+                for (int i = 0; i < dt.Columns.Count; i++)
+                {
+                    var value = row[i]?.ToString();
+                    var len = value?.Length ?? 0;
+                    if (!columnMaxLengths.ContainsKey(i) || columnMaxLengths[i] < len)
+                    {
+                        columnMaxLengths[i] = len;
+                    }
+                }
+            }
+            
             for (var i = 0; i < dt.Columns.Count; i++)
             {
                 var col = dt.Columns[i];
-                var maxValueColumn = dt.AsEnumerable().Max(t => t[col] == null ? "" : t[col].ToString());
-                var item = string.Format(@"""{0}"" {1} {2}", col.ColumnName, GetSqlType(col, maxValueColumn == null ? 50 : maxValueColumn.Length),
+                var maxLength = columnMaxLengths.ContainsKey(i) ? columnMaxLengths[i] : 50;
+                var item = string.Format(@"""{0}"" {1} {2}", col.ColumnName, GetSqlType(col, maxLength),
                     col.AllowDBNull ? "NULL" : "");
                 cols.Add(item);
             }
