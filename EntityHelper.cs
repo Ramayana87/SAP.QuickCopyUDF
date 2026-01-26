@@ -1,5 +1,5 @@
 ﻿using Newtonsoft.Json;
-using SAPbobsCOM;
+using SAPbobsCOM; // Note: Only used for enum types (BoFieldTypes, BoFldSubTypes, BoYesNoEnum, etc.) - NOT for DI API connection
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,6 +8,10 @@ using System.Threading.Tasks;
 
 namespace SAP.QuickCopyUDF
 {
+    /// <summary>
+    /// Entity classes for SAP Business One Service Layer operations
+    /// This application uses DI Service (Service Layer) via REST API - NOT DI API
+    /// </summary>
 
     public class ValidValuesMDImpl
     {

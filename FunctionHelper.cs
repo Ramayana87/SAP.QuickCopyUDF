@@ -13,6 +13,11 @@ using System.Threading.Tasks;
 
 namespace SAP.QuickCopyUDF
 {
+    /// <summary>
+    /// Helper class for SAP Business One operations using DI Service (Service Layer)
+    /// This class uses REST API calls to Service Layer - NOT DI API
+    /// Note: SAPbobsCOM is only used for enum types (BoFieldTypes, BoFldSubTypes, etc.)
+    /// </summary>
     public static class FunctionHelper
     {
         public static string serviceAdress = "";
@@ -468,10 +473,20 @@ namespace SAP.QuickCopyUDF
             }
         }
 
+        /// <summary>
+        /// Make REST API calls to SAP Business One DI Service (Service Layer)
+        /// This uses Service Layer endpoints (/b1s/v1/...) - NOT DI API
+        /// </summary>
+        /// <param name="serviceName">Service Layer resource name (e.g., "UserFieldsMD", "UserTablesMD")</param>
+        /// <param name="jsonString">JSON payload for the request</param>
+        /// <param name="method">HTTP method (POST, PATCH, DELETE)</param>
+        /// <param name="key">OData key for PATCH/DELETE operations</param>
+        /// <returns>REST response from Service Layer</returns>
         private static IRestResponse GetResponseService(string serviceName, string jsonString, Method method = Method.POST, string key = "")
         {
             ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            // DI Service (Service Layer) endpoint - NOT DI API
             var uri = string.Format("https://{0}/b1s/v1/{1}", serviceAdress, serviceName);
             if (method != Method.POST && !string.IsNullOrEmpty(key))
             {

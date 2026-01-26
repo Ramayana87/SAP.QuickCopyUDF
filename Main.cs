@@ -118,6 +118,10 @@ namespace SAP.QuickCopyUDF
             btn_Login.Enabled = true;
         }
 
+        /// <summary>
+        /// Login to SAP Business One using DI Service (Service Layer) via REST API
+        /// This method does NOT use DI API (Company.Connect)
+        /// </summary>
         public string Login()
         {
 
@@ -1209,11 +1213,21 @@ namespace SAP.QuickCopyUDF
             richTextBox1.Text = "";
         }
 
+        /// <summary>
+        /// Make REST API calls to SAP Business One DI Service (Service Layer)
+        /// This uses Service Layer endpoints (/b1s/v1/...) - NOT DI API
+        /// </summary>
+        /// <param name="serviceName">Service Layer resource name (e.g., "UserFieldsMD", "UserTablesMD", "Login")</param>
+        /// <param name="jsonString">JSON payload for the request</param>
+        /// <param name="method">HTTP method (POST, PATCH, DELETE)</param>
+        /// <param name="key">OData key for PATCH/DELETE operations</param>
+        /// <returns>REST response from Service Layer</returns>
         private IRestResponse GetResponseService(string serviceName, string jsonString, Method method = Method.POST, string key = "")
         {
             var ServiceAddress = txt_ServiceAddress.Text;
             ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+            // DI Service (Service Layer) endpoint - NOT DI API
             var uri = string.Format("https://{0}/b1s/v1/{1}", ServiceAddress, serviceName);
             if (method != Method.POST && !string.IsNullOrEmpty(key))
             {
