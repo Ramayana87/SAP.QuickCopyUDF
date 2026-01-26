@@ -47,6 +47,31 @@ namespace SAP.QuickCopyUDF
             InitializeComponent();
         }
 
+        private void ReleaseCompanyObject()
+        {
+            if (oCompany != null)
+            {
+                if (oCompany.Connected)
+                {
+                    oCompany.Disconnect();
+                }
+                System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
+                oCompany = null;
+            }
+        }
+
+        private bool IsConnected()
+        {
+            if (targetServiceType.Equals("DI"))
+            {
+                return oCompany != null && oCompany.Connected;
+            }
+            else
+            {
+                return !string.IsNullOrEmpty(SessionId);
+            }
+        }
+
         private void frm_Home_Load(object sender, EventArgs e)
         {
             try
@@ -118,7 +143,7 @@ namespace SAP.QuickCopyUDF
                 targetServiceType = Function.ToString(txtTargetServiceType.EditValue);
                 var ret = Login();
                 richTextBox1.Text = ret + "\t" + SessionId;
-                if (!string.IsNullOrEmpty(SessionId) || (targetServiceType.Equals("DI") && oCompany != null && oCompany.Connected))
+                if (IsConnected())
                 {
                     btn_CreateUDT.Enabled = true;
                     btn_CreateUDF.Enabled = true;
@@ -178,18 +203,10 @@ namespace SAP.QuickCopyUDF
         {
             try
             {
-                if (oCompany == null)
-                {
-                    oCompany = new SAPbobsCOM.Company();
-                }
-
-                if (oCompany.Connected)
-                {
-                    oCompany.Disconnect();
-                    System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
-                    oCompany = new SAPbobsCOM.Company();
-                }
-
+                // Release existing connection if any
+                ReleaseCompanyObject();
+                
+                oCompany = new SAPbobsCOM.Company();
                 oCompany.Server = txt_ServerHana.Text;
                 oCompany.CompanyDB = txt_Hana_Database.Text;
                 oCompany.UserName = txt_SapUser.Text;
@@ -1945,9 +1962,7 @@ namespace SAP.QuickCopyUDF
                 {
                     if (oCompany != null && oCompany.Connected)
                     {
-                        oCompany.Disconnect();
-                        System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
-                        oCompany = null;
+                        ReleaseCompanyObject();
                         richTextBox1.Text = "LogOut DI API" + "\t" + "SUCCESS!";
                         SessionId = "";
                         btn_CreateUDT.Enabled = false;

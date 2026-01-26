@@ -19,16 +19,8 @@ namespace SAP.QuickCopyUDF
                 components.Dispose();
             }
             
-            // Release COM object
-            if (oCompany != null)
-            {
-                if (oCompany.Connected)
-                {
-                    oCompany.Disconnect();
-                }
-                System.Runtime.InteropServices.Marshal.ReleaseComObject(oCompany);
-                oCompany = null;
-            }
+            // Release COM object using helper method
+            ReleaseCompanyObject();
             
             base.Dispose(disposing);
         }
