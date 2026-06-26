@@ -26,6 +26,8 @@ namespace SAP.QuickCopyUDF
     {
         public string SessionId { get; set; }
 
+        private string _serviceAddress;
+
         public string SQLConnectionSource { get; set; }
 
         public string HanaConnectionString { get; set; }
@@ -91,13 +93,16 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void login_Click(object sender, EventArgs e)
+        private async void login_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_Login.Enabled = false;
                 GetConnectionString();
-                var ret = Login();
+                var companyDb = txt_Hana_Database.Text;
+                var sapPass = txt_SapPass.Text;
+                var sapUser = txt_SapUser.Text;
+                var ret = await Task.Run(() => Login(companyDb, sapPass, sapUser));
                 richTextBox1.Text = ret + "\t" + SessionId;
                 if (!string.IsNullOrEmpty(SessionId))
                 {
@@ -115,13 +120,15 @@ namespace SAP.QuickCopyUDF
             {
                 Logging.Write(Logging.ERROR, ex);
             }
-            btn_Login.Enabled = true;
+            finally
+            {
+                btn_Login.Enabled = true;
+            }
         }
 
-        public string Login()
+        public string Login(string companyDb, string sapPass, string sapUser)
         {
-
-            var jsonString = string.Format(@"{{""CompanyDB"": ""{0}"",""Password"":""{1}"",""UserName"":""{2}""}}", txt_Hana_Database.Text, txt_SapPass.Text, txt_SapUser.Text);
+            var jsonString = string.Format(@"{{""CompanyDB"": ""{0}"",""Password"":""{1}"",""UserName"":""{2}""}}", companyDb, sapPass, sapUser);
             var response = GetResponseService("Login", jsonString);
             if (response.StatusCode == HttpStatusCode.OK || response.StatusCode == HttpStatusCode.Accepted || response.StatusCode == HttpStatusCode.Created)
             {
@@ -132,7 +139,7 @@ namespace SAP.QuickCopyUDF
                 }
                 SessionId = result.SessionId;
                 FunctionHelper.sessionId = result.SessionId;
-                FunctionHelper.serviceAdress = txt_ServiceAddress.Text;
+                FunctionHelper.serviceAdress = _serviceAddress;
                 return string.Empty;
             }
             if (response.StatusCode == HttpStatusCode.Unauthorized)
@@ -143,54 +150,58 @@ namespace SAP.QuickCopyUDF
             return string.Format("Login failed. {0}", response.ErrorMessage);
         }
 
-        private void btn_CreateUDT_Click(object sender, EventArgs e)
+        private async void btn_CreateUDT_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_CreateUDT.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
-                    if (sourceType.Equals("S"))
-                        ds = ExecuteData(string.Format("SELECT * FROM OUTB WHERE TableName IN ({0}); ", tableNames));
+                    var ds = new DataSet();
+                    if (!string.IsNullOrEmpty(tableNameText))
+                    {
+                        var lstTable = tableNameText.Split(',').ToList();
+                        var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
+                        if (sourceType.Equals("S"))
+                            ds = ExecuteData(string.Format("SELECT * FROM OUTB WHERE TableName IN ({0}); ", tableNames));
+                        else
+                        {
+                            var dtOUTB = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM OUTB WHERE \"TableName\" IN ({0}); ", tableNames));
+                            ds.Tables.Add(dtOUTB);
+                        }
+                    }
                     else
                     {
-                        var dtOUTB = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM OUTB WHERE \"TableName\" IN ({0}); ", tableNames));
-                        ds.Tables.Add(dtOUTB);
+                        if (sourceType.Equals("S"))
+                            ds = ExecuteData("SELECT * FROM OUTB;");
+                        else
+                            ds = _httpClientSource.ExecuteData("SELECT * FROM OUTB;");
                     }
-                }
-                else
-                {
-                    if (sourceType.Equals("S"))
-                        ds = ExecuteData("SELECT * FROM OUTB;");
-                    else
-                        ds = _httpClientSource.ExecuteData("SELECT * FROM OUTB;");
-                }
-                if (ds.Tables.Count > 0)
-                {
-                    var dt = ds.Tables[0];
-                    foreach (DataRow item in dt.Rows)
+                    if (ds.Tables.Count > 0)
                     {
-                        if (CheckExistTable(Function.ToString(item["TableName"]))) continue;
-                        var ret = AddUdt(item);
-                        var error1 = richTextBox1.Text;
-                        error1 += "\n" + ret;
-                        richTextBox1.Text = error1;
+                        var dt = ds.Tables[0];
+                        foreach (DataRow item in dt.Rows)
+                        {
+                            if (CheckExistTable(Function.ToString(item["TableName"]))) continue;
+                            var ret = AddUdt(item);
+                            AppendLog(ret);
+                        }
                     }
-                    MessageBox.Show("DONE");
-                }
-
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_CreateUDT.Enabled = true;
+            finally
+            {
+                btn_CreateUDT.Enabled = true;
+            }
         }
 
         protected string AddUdt(DataRow row)
@@ -241,17 +252,20 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void btn_CreateUDF_Click(object sender, EventArgs e)
+        private async void btn_CreateUDF_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_CreateUDF.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
+                var ds = new DataSet();
+                if (!string.IsNullOrEmpty(tableNameText))
+                {
+                    var lstTable = tableNameText.Split(',').ToList();
                     var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}); SELECT * FROM UFD1 WHERE TableID IN ({0}); ", tableNames));
@@ -359,19 +373,21 @@ namespace SAP.QuickCopyUDF
                         }
 
                         var ret = AddUdf(field);
-                        var error1 = richTextBox1.Text;
-                        error1 += "\n" + ret;
-                        richTextBox1.Text = error1;
+                        AppendLog(ret);
                     }
-                    MessageBox.Show("DONE");
                 }
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_CreateUDF.Enabled = true;
+            finally
+            {
+                btn_CreateUDF.Enabled = true;
+            }
         }
 
         public string AddUdf(UserFieldsImpl field)
@@ -440,17 +456,20 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void btn_LinkUDF_Click(object sender, EventArgs e)
+        private async void btn_LinkUDF_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_LinkUDF.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
+                var ds = new DataSet();
+                if (!string.IsNullOrEmpty(tableNameText))
+                {
+                    var lstTable = tableNameText.Split(',').ToList();
                     var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}) AND RelUDO <> '';", tableNames));
@@ -500,26 +519,26 @@ namespace SAP.QuickCopyUDF
                         }
                         else
                         {
-                            var error2 = richTextBox1.Text;
-                            error2 += "\n" + field.TableName + "\t" + field.Name + " not exists!";
-                            richTextBox1.Text = error2;
+                            AppendLog(field.TableName + "\t" + field.Name + " not exists!");
                             continue;
                         }
 
                         var ret = LinkUdf(field);
-                        var error1 = richTextBox1.Text;
-                        error1 += "\n" + ret;
-                        richTextBox1.Text = error1;
+                        AppendLog(ret);
                     }
-                    MessageBox.Show("DONE");
                 }
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_LinkUDF.Enabled = true;
+            finally
+            {
+                btn_LinkUDF.Enabled = true;
+            }
         }
 
         public string LinkUdf(UserFieldsImpl field)
@@ -550,17 +569,20 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void btn_UpdateUDF_Click(object sender, EventArgs e)
+        private async void btn_UpdateUDF_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_UpdateUDF.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
+                var ds = new DataSet();
+                if (!string.IsNullOrEmpty(tableNameText))
+                {
+                    var lstTable = tableNameText.Split(',').ToList();
                     var tableNames = string.Join(",", lstTable.Select(m => "'" + m.Trim() + "'").ToArray());
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE TableID IN ({0}); SELECT * FROM UFD1 WHERE TableID IN ({0}); ", tableNames));
@@ -642,21 +664,23 @@ namespace SAP.QuickCopyUDF
                         }
 
                         var ret = UpdateUdf(field);
-                        var error1 = richTextBox1.Text;
-                        error1 += "\n" + ret;
-                        richTextBox1.Text = error1;
+                        AppendLog(ret);
                     }
-                    MessageBox.Show("DONE");
                 }
                 else
-                    richTextBox1.Text = "Nhập danh sách bảng cần cập nhật UDF! lưu ý: ValidValue chỉ thêm được value chứ không cập nhật giá trị cũ";
+                    AppendLog("Nhập danh sách bảng cần cập nhật UDF! lưu ý: ValidValue chỉ thêm được value chứ không cập nhật giá trị cũ");
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_UpdateUDF.Enabled = true;
+            finally
+            {
+                btn_UpdateUDF.Enabled = true;
+            }
         }
 
         public string UpdateUdf(UserFieldsImpl field)
@@ -729,47 +753,52 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void btn_DelUDF_Click(object sender, EventArgs e)
+        private async void btn_DelUDF_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_DelUDF.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
-                    var tableNames = string.Join(",", lstTable.Select(m => "'" + m.Trim() + "'").ToArray());
-                    if (sourceType.Equals("S"))
-                        ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE \"TableID\" IN ({0});", tableNames));
-                    else
-                        ds = _httpClientSource.ExecuteData(string.Format("SELECT * FROM CUFD WHERE \"TableID\" IN ({0});", tableNames));
-                }
-                if (ds.Tables.Count > 0)
-                {
-                    var dt = ds.Tables[0];
-                    foreach (DataRow item in dt.Rows)
+                    var ds = new DataSet();
+                    if (!string.IsNullOrEmpty(tableNameText))
                     {
-                        var field = new UserFieldsImpl();
-                        field.Name = Function.ToString(item["AliasID"]);
-                        field.TableName = Function.ToString(item["TableID"]);
-                        field.FieldID = Function.ParseInt(item["FieldID"]);
-
-                        var ret = DeleteUdf(field);
-                        var error1 = richTextBox1.Text;
-                        error1 += "\n" + ret;
-                        richTextBox1.Text = error1;
+                        var lstTable = tableNameText.Split(',').ToList();
+                        var tableNames = string.Join(",", lstTable.Select(m => "'" + m.Trim() + "'").ToArray());
+                        if (sourceType.Equals("S"))
+                            ds = ExecuteData(string.Format("SELECT * FROM CUFD WHERE \"TableID\" IN ({0});", tableNames));
+                        else
+                            ds = _httpClientSource.ExecuteData(string.Format("SELECT * FROM CUFD WHERE \"TableID\" IN ({0});", tableNames));
                     }
-                    MessageBox.Show("DONE");
-                }
+                    if (ds.Tables.Count > 0)
+                    {
+                        var dt = ds.Tables[0];
+                        foreach (DataRow item in dt.Rows)
+                        {
+                            var field = new UserFieldsImpl();
+                            field.Name = Function.ToString(item["AliasID"]);
+                            field.TableName = Function.ToString(item["TableID"]);
+                            field.FieldID = Function.ParseInt(item["FieldID"]);
+
+                            var ret = DeleteUdf(field);
+                            AppendLog(ret);
+                        }
+                    }
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_DelUDF.Enabled = true;
+            finally
+            {
+                btn_DelUDF.Enabled = true;
+            }
         }
 
         public string DeleteUdf(UserFieldsImpl field)
@@ -789,17 +818,20 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private void btn_CreateUDO_Click(object sender, EventArgs e)
+        private async void btn_CreateUDO_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_CreateUDO.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
-                var ds = new DataSet();
-                if (!string.IsNullOrEmpty(txt_TableName.Text))
+                var tableNameText = txt_TableName.Text;
+                await Task.Run(() =>
                 {
-                    var lstTable = txt_TableName.Text.Split(',').ToList();
+                var ds = new DataSet();
+                if (!string.IsNullOrEmpty(tableNameText))
+                {
+                    var lstTable = tableNameText.Split(',').ToList();
                     var tableNames = string.Join(",", lstTable.Select(m => "'" + m + "'").ToArray());
                     if (sourceType.Equals("S"))
                         ds = ExecuteData(string.Format(@"SELECT * FROM OUDO WHERE Code IN ({0}); " +
@@ -944,27 +976,27 @@ namespace SAP.QuickCopyUDF
                         if (!CheckExistUDO(udo.Code))
                         {
                             var ret = AddUdo(udo);
-                            var error1 = richTextBox1.Text;
-                            error1 += "\n" + "ADD UDO" + "\t" + ret;
-                            richTextBox1.Text = error1;
+                            AppendLog("ADD UDO\t" + ret);
                         }
                         else
                         {
                             var ret = UpdateUdo(udo);
-                            var error1 = richTextBox1.Text;
-                            error1 += "\n" + "UPDATE UDO" + "\t" + ret;
-                            richTextBox1.Text = error1;
+                            AppendLog("UPDATE UDO\t" + ret);
                         }
                     }
-                    MessageBox.Show("DONE");
                 }
+                });
+                MessageBox.Show("DONE");
             }
             catch (Exception ex)
             {
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_CreateUDO.Enabled = true;
+            finally
+            {
+                btn_CreateUDO.Enabled = true;
+            }
         }
 
         public string AddUdo(UserObjectsImpl udo)
@@ -1209,9 +1241,17 @@ namespace SAP.QuickCopyUDF
             richTextBox1.Text = "";
         }
 
+        private void AppendLog(string text)
+        {
+            if (richTextBox1.InvokeRequired)
+                richTextBox1.Invoke((Action)(() => richTextBox1.AppendText("\n" + text)));
+            else
+                richTextBox1.AppendText("\n" + text);
+        }
+
         private IRestResponse GetResponseService(string serviceName, string jsonString, Method method = Method.POST, string key = "")
         {
-            var ServiceAddress = txt_ServiceAddress.Text;
+            var ServiceAddress = _serviceAddress;
             ServicePointManager.ServerCertificateValidationCallback += (sender, certificate, chain, sslPolicyErrors) => true;
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             var uri = string.Format("https://{0}/b1s/v1/{1}", ServiceAddress, serviceName);
@@ -1234,37 +1274,36 @@ namespace SAP.QuickCopyUDF
             return client.Execute(request);
         }
 
-        private void btn_CopyData_Click(object sender, EventArgs e)
+        private async void btn_CopyData_Click(object sender, EventArgs e)
         {
             try
             {
                 btn_CopyData.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
-                var lstTable = tableNames.Split(',').ToList();
-                foreach (var table in lstTable)
+                await Task.Run(() =>
                 {
-                    var dt = new DataTable();
-                    if (sourceType.Equals("S"))
-                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
-                    else
-                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                    var lstTable = tableNames.Split(',').ToList();
+                    foreach (var table in lstTable)
+                    {
+                        var dt = new DataTable();
+                        if (sourceType.Equals("S"))
+                            dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        else
+                            dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
 
-                    if (dt.IsNotNull())
-                    {
-                        var ret = _httpClient.BulkCopy(dt, table);
-                        var text = richTextBox1.Text;
-                        text += "\n" + table + "\t" + dt.Rows.Count + "\t" + ret;
-                        richTextBox1.Text = text;
+                        if (dt.IsNotNull())
+                        {
+                            var ret = _httpClient.BulkCopy(dt, table);
+                            AppendLog(table + "\t" + dt.Rows.Count + "\t" + ret);
+                        }
+                        else
+                        {
+                            AppendLog(table + "\tData is Empty!");
+                        }
                     }
-                    else
-                    {
-                        var text = richTextBox1.Text;
-                        text += "\n" + table + "\t" + "Data is Empty!";
-                        richTextBox1.Text = text;
-                    }
-                }
+                });
                 MessageBox.Show("DONE");
             }
             catch (Exception ex)
@@ -1272,51 +1311,48 @@ namespace SAP.QuickCopyUDF
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_CopyData.Enabled = true;
+            finally
+            {
+                btn_CopyData.Enabled = true;
+            }
         }
 
-        private void btn_DelCopy_Click(object sender, EventArgs e)
+        private async void btn_DelCopy_Click(object sender, EventArgs e)
         {
+            if (XtraMessageBox.Show("Do you want to save change?", "Message", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+                return;
             try
             {
-                if (XtraMessageBox.Show("Do you want to save change?", "Message", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
-                {
-                    return;
-                }
                 btn_CopyData.Enabled = false;
                 btn_DelCopy.Enabled = false;
-                richTextBox1.Text = "";
+                richTextBox1.Clear();
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
-                var lstTable = tableNames.Split(',').ToList();
-                foreach (var table in lstTable)
+                await Task.Run(() =>
                 {
-                    var dt = new DataTable();
-                    if (sourceType.Equals("S"))
-                        dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
-                    else
-                        dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
-
-                    if (dt.IsNotNull())
+                    var lstTable = tableNames.Split(',').ToList();
+                    foreach (var table in lstTable)
                     {
-                        string sqlDelOldData = string.Format("DELETE FROM \"{0}\";", table);
-                        var rowDel = _httpClient.ExecuteNonQuery(sqlDelOldData);
-                        var textDel = richTextBox1.Text;
-                        textDel += "\n" + table + "\t" + "Deleted rows:" + "\t" + rowDel.ToString();
-                        richTextBox1.Text = textDel;
+                        var dt = new DataTable();
+                        if (sourceType.Equals("S"))
+                            dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
+                        else
+                            dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
 
-                        var ret = _httpClient.BulkCopy(dt, table);
-                        var text = richTextBox1.Text;
-                        text += "\n" + table + "\t" + dt.Rows.Count + "\t" + ret;
-                        richTextBox1.Text = text;
+                        if (dt.IsNotNull())
+                        {
+                            var rowDel = _httpClient.ExecuteNonQuery(string.Format("DELETE FROM \"{0}\";", table));
+                            AppendLog(table + "\tDeleted rows:\t" + rowDel);
+
+                            var ret = _httpClient.BulkCopy(dt, table);
+                            AppendLog(table + "\t" + dt.Rows.Count + "\t" + ret);
+                        }
+                        else
+                        {
+                            AppendLog(table + "\tData is Empty!");
+                        }
                     }
-                    else
-                    {
-                        var text = richTextBox1.Text;
-                        text += "\n" + table + "\t" + "Data is Empty!";
-                        richTextBox1.Text = text;
-                    }
-                }
+                });
                 MessageBox.Show("DONE");
             }
             catch (Exception ex)
@@ -1324,8 +1360,11 @@ namespace SAP.QuickCopyUDF
                 Logging.Write(Logging.ERROR, ex);
                 MessageBox.Show(ex.Message);
             }
-            btn_CopyData.Enabled = true;
-            btn_DelCopy.Enabled = true;
+            finally
+            {
+                btn_CopyData.Enabled = true;
+                btn_DelCopy.Enabled = true;
+            }
         }
 
         public void GetConnectionString()
@@ -1333,6 +1372,7 @@ namespace SAP.QuickCopyUDF
             try
             {
                 sourceType = txtServerType.EditValue.ToString();
+                _serviceAddress = txt_ServiceAddress.Text;
                 HanaConnectionString = string.Format("Server = {0};CS={1}; UserID = {2}; Password = {3}; Pooling=false;Max Pool Size=50;Min Pool Size=5", txt_ServerHana.Text, txt_Hana_Database.Text, txt_HanaUser.Text, txt_HanaPass.Text);
                 _httpClient = new DatabaseHanaClient(HanaConnectionString);
                 if (sourceType.Equals("S"))
