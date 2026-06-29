@@ -93,6 +93,40 @@ namespace SAP.QuickCopyUDF
             }
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                if (MessageBox.Show("Bạn có chắc muốn thoát ứng dụng?", "Xác nhận thoát",
+                        MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No)
+                {
+                    e.Cancel = true;
+                    base.OnFormClosing(e);
+                    return;
+                }
+
+                // Hủy tác vụ đang chạy (nếu có) trước khi thoát
+                if (_cts != null && !_cts.IsCancellationRequested)
+                    _cts.Cancel();
+
+                // Đã login mà chưa logout -> tự logout trước khi tắt
+                if (!string.IsNullOrEmpty(SessionId))
+                {
+                    try
+                    {
+                        GetConnectionString();
+                        GetResponseService("Logout", "");
+                        SessionId = "";
+                    }
+                    catch (Exception ex)
+                    {
+                        Logging.Write(Logging.ERROR, ex);
+                    }
+                }
+            }
+            base.OnFormClosing(e);
+        }
+
         private async void login_Click(object sender, EventArgs e)
         {
             try
@@ -152,14 +186,16 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_CreateUDT_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("Tạo User Defined Table từ DB nguồn sang DB đích?", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
             try
             {
-                btn_CreateUDT.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
                 await Task.Run(() =>
                 {
+                    Log("START CreateUDT" + (string.IsNullOrEmpty(tableNameText) ? " - All tables" : " - " + tableNameText));
                     var ds = new DataSet();
                     if (!string.IsNullOrEmpty(tableNameText))
                     {
@@ -183,15 +219,34 @@ namespace SAP.QuickCopyUDF
                     if (ds.Tables.Count > 0)
                     {
                         var dt = ds.Tables[0];
+                        Log(string.Format("LOAD {0} UDT(s) from source", dt.Rows.Count));
+                        int created = 0, skipped = 0, udfAdded = 0;
                         foreach (DataRow item in dt.Rows)
                         {
-                            if (CheckExistTable(Function.ToString(item["TableName"]))) continue;
+                            if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
+                            var tableName = Function.ToString(item["TableName"]);
+                            if (CheckExistTable(tableName))
+                            {
+                                Log(string.Format("SKIP UDT [{0}] already exists - checking UDFs...", tableName));
+                                var added = SyncUdfForTable(tableName);
+                                udfAdded += added;
+                                Log(string.Format("SYNC UDT [{0}] -> {1} UDF(s) added", tableName, added));
+                                skipped++;
+                                continue;
+                            }
+                            Log(string.Format("CREATE UDT [{0}]...", tableName));
                             var ret = AddUdt(item);
-                            AppendLog(ret);
+                            Log("RESULT\t" + ret);
+                            created++;
                         }
+                        Log(string.Format("DONE CreateUDT: {0} created, {1} skipped, {2} UDF(s) synced", created, skipped, udfAdded));
+                    }
+                    else
+                    {
+                        Log("WARN No UDT data found in source");
                     }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -200,7 +255,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_CreateUDT.Enabled = true;
+                EndTask();
             }
         }
 
@@ -252,16 +307,149 @@ namespace SAP.QuickCopyUDF
             }
         }
 
-        private async void btn_CreateUDF_Click(object sender, EventArgs e)
+        private void EnsureUdtExists(string tableName)
         {
+            if (string.IsNullOrEmpty(tableName)) return;
+            if (CheckExistTable(tableName))
+            {
+                Log(string.Format("  UDT [{0}] already exists - syncing UDFs...", tableName));
+                var existsAdded = SyncUdfForTable(tableName);
+                Log(string.Format("  SYNC UDT [{0}] -> {1} UDF(s) added", tableName, existsAdded));
+                return;
+            }
+
+            DataRow udtRow = null;
+            if (sourceType.Equals("S"))
+            {
+                var ds = ExecuteData(string.Format("SELECT * FROM OUTB WHERE TableName = '{0}';", tableName));
+                if (ds.Tables.Count > 0 && ds.Tables[0].Rows.Count > 0)
+                    udtRow = ds.Tables[0].Rows[0];
+            }
+            else
+            {
+                var dt = _httpClientSource.ExecuteDataTable(string.Format("SELECT * FROM OUTB WHERE \"TableName\" = '{0}';", tableName));
+                if (dt != null && dt.Rows.Count > 0)
+                    udtRow = dt.Rows[0];
+            }
+
+            if (udtRow == null)
+            {
+                Log(string.Format("  WARN UDT [{0}] not found in source - skipping", tableName));
+                return;
+            }
+
+            Log(string.Format("  CREATE UDT [{0}]...", tableName));
+            var ret = AddUdt(udtRow);
+            Log(string.Format("  RESULT {0}", ret));
+
+            var added = SyncUdfForTable(tableName);
+            Log(string.Format("  SYNC UDT [{0}] -> {1} UDF(s) added", tableName, added));
+        }
+
+        private int SyncUdfForTable(string tableName)
+        {
+            int added = 0;
             try
             {
-                btn_CreateUDF.Enabled = false;
-                richTextBox1.Clear();
+                // CUFD/UFD1 lưu TableID có "@", OUTB/OUDO lưu TableName không có "@"
+                var dbTableName = tableName.StartsWith("@") ? tableName : "@" + tableName;
+
+                DataTable dtCufd, dtUfd1;
+                if (sourceType.Equals("S"))
+                {
+                    var ds = ExecuteData(string.Format(
+                        "SELECT * FROM CUFD WHERE TableID = '{0}'; SELECT * FROM UFD1 WHERE TableID = '{0}';",
+                        dbTableName));
+                    if (ds.Tables.Count < 2) return 0;
+                    dtCufd = ds.Tables[0];
+                    dtUfd1 = ds.Tables[1];
+                }
+                else
+                {
+                    dtCufd = _httpClientSource.ExecuteDataTable(string.Format(
+                        "SELECT * FROM CUFD WHERE \"TableID\" = '{0}';", dbTableName));
+                    dtUfd1 = _httpClientSource.ExecuteDataTable(string.Format(
+                        "SELECT * FROM UFD1 WHERE \"TableID\" = '{0}';", dbTableName));
+                }
+
+                if (dtCufd == null || dtCufd.Rows.Count == 0)
+                {
+                    Log(string.Format("  INFO No UDFs in source for [{0}]", tableName));
+                    return 0;
+                }
+
+                Log(string.Format("  LOAD {0} UDF(s) in source for [{1}]", dtCufd.Rows.Count, tableName));
+                int skipped = 0;
+                foreach (DataRow row in dtCufd.Rows)
+                {
+                    if (Cancelled) break;
+                    var field = new UserFieldsImpl
+                    {
+                        TableName = Function.ToString(row["TableID"]),
+                        Name      = Function.ToString(row["AliasID"])
+                    };
+
+                    if (CheckExistsUdfColumn(field.TableName, field.Name))
+                    {
+                        skipped++;
+                        continue;
+                    }
+
+                    field.Size         = Function.ParseInt(row["SizeID"]);
+                    field.Description  = Function.ToString(row["Descr"]);
+                    field.FieldID      = Function.ParseInt(row["FieldID"]);
+                    field.Mandatory    = Function.ToString(row["NotNull"]) == "Y" ? BoYesNoEnum.tYES : BoYesNoEnum.tNO;
+                    field.EditSize     = Function.ParseInt(row["EditSize"]);
+                    field.Type         = MapUdfType(Function.ToString(row["TypeID"]));
+                    field.SubType      = MapUdfSubType(Function.ToString(row["EditType"]));
+                    field.LinkedTable  = Function.ToString(row["RTable"]);
+                    field.DefaultValue = Function.ToString(row["Dflt"]);
+                    field.LinkedObject = Function.ToString(row["RelSO"]);
+
+                    if (dtUfd1 != null)
+                    {
+                        var valid = dtUfd1.AsEnumerable().Where(t =>
+                            Function.ToString(t["TableID"]) == field.TableName &&
+                            Function.ParseInt(t["FieldID"]) == field.FieldID);
+                        if (valid.Any())
+                        {
+                            field.ValidValues = valid.Select(v => new ValidValuesMDImpl
+                            {
+                                Description = Function.ToString(v["Descr"]),
+                                Value       = Function.ToString(v["FldValue"])
+                            }).ToList();
+                        }
+                    }
+
+                    Log(string.Format("  ADD UDF [{0}.{1}]...", field.TableName, field.Name));
+                    var ret = AddUdf(field);
+                    Log("  RESULT\t" + ret);
+                    added++;
+                }
+                if (skipped > 0)
+                    Log(string.Format("  SKIP {0} UDF(s) already exists in [{1}]", skipped, tableName));
+            }
+            catch (Exception ex)
+            {
+                Log(string.Format("  ERROR SyncUDF [{0}]: {1}", tableName, ex.Message), isError: true);
+                Logging.Write(Logging.ERROR, ex);
+            }
+            return added;
+        }
+
+        private async void btn_CreateUDF_Click(object sender, EventArgs e)
+        {
+            if (MessageBox.Show("Tạo User Defined Field từ DB nguồn sang DB đích?", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
+            try
+            {
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
+                var udfNameText = txt_UDFName.Text;
                 await Task.Run(() =>
                 {
+                Log("START CreateUDF" + (string.IsNullOrEmpty(tableNameText) ? " - All tables" : " - " + tableNameText));
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(tableNameText))
                 {
@@ -309,49 +497,34 @@ namespace SAP.QuickCopyUDF
                 if (ds.Tables.Count > 0)
                 {
                     var dt = ds.Tables[0];
+                    if (!string.IsNullOrEmpty(udfNameText))
+                    {
+                        var udfFilter = ParseUdfNames(udfNameText);
+                        var matchRows = dt.AsEnumerable().Where(r => udfFilter.Contains(Function.ToString(r["AliasID"]))).ToList();
+                        Log(string.Format("FILTER UDF names: {0} match(es) of {1}", matchRows.Count, dt.Rows.Count));
+                        dt = matchRows.Count > 0 ? matchRows.CopyToDataTable() : dt.Clone();
+                    }
+                    Log(string.Format("LOAD {0} UDF(s) from source", dt.Rows.Count));
+                    int added = 0, skipped = 0;
                     foreach (DataRow item in dt.Rows)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                         var field = new UserFieldsImpl();
                         field.TableName = Function.ToString(item["TableID"]);
                         field.Name = Function.ToString(item["AliasID"]);
-                        if (CheckExistsUdfColumn(field.TableName, field.Name)) continue;
+                        if (CheckExistsUdfColumn(field.TableName, field.Name))
+                        {
+                            Log(string.Format("SKIP UDF [{0}.{1}] already exists", field.TableName, field.Name));
+                            skipped++;
+                            continue;
+                        }
                         field.Size = Function.ParseInt(item["SizeID"]);
                         field.Description = Function.ToString(item["Descr"]);
                         field.FieldID = Function.ParseInt(item["FieldID"]);
                         field.Mandatory = Function.ToString(item["NotNull"]) == "Y" ? BoYesNoEnum.tYES : BoYesNoEnum.tNO;
                         field.EditSize = Function.ParseInt(item["EditSize"]);
-                        var type = Function.ToString(item["TypeID"]);
-                        switch (type)
-                        {
-                            case "B": field.Type = BoFieldTypes.db_Float; break;
-                            case "M": field.Type = BoFieldTypes.db_Memo; break;
-                            case "D": field.Type = BoFieldTypes.db_Date; break;
-                            case "N": field.Type = BoFieldTypes.db_Numeric; break;
-                            default:
-                                field.Type = BoFieldTypes.db_Alpha;
-                                break;
-                        }
-                        var subType = Function.ToString(item["EditType"]);
-                        //if (new[] { BoFieldTypes.db_Float, BoFieldTypes.db_Date, BoFieldTypes.db_Alpha }.Contains(field.Type))
-                        //{
-                        switch (subType)
-                        {
-                            case "S": field.SubType = BoFldSubTypes.st_Sum; break;
-                            case "P": field.SubType = BoFldSubTypes.st_Price; break;
-                            case "%": field.SubType = BoFldSubTypes.st_Percentage; break;
-                            case "Q": field.SubType = BoFldSubTypes.st_Quantity; break;
-                            case "T": field.SubType = BoFldSubTypes.st_Time; break;
-                            case "A": field.SubType = BoFldSubTypes.st_Address; break;
-                            case "M": field.SubType = BoFldSubTypes.st_Measurement; break;
-                            case "L": field.SubType = BoFldSubTypes.st_Link; break;
-                            case "R": field.SubType = BoFldSubTypes.st_Rate; break;
-                            case "B": field.SubType = BoFldSubTypes.st_Link; break;
-
-                            default:
-                                field.SubType = BoFldSubTypes.st_None;
-                                break;
-                        }
-                        //}
+                        field.Type = MapUdfType(Function.ToString(item["TypeID"]));
+                        field.SubType = MapUdfSubType(Function.ToString(item["EditType"]));
 
                         field.LinkedTable = Function.ToString(item["RTable"]);
                         field.DefaultValue = Function.ToString(item["Dflt"]);
@@ -372,12 +545,19 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
+                        Log(string.Format("ADD UDF [{0}.{1}]...", field.TableName, field.Name));
                         var ret = AddUdf(field);
-                        AppendLog(ret);
+                        Log("RESULT\t" + ret);
+                        added++;
                     }
+                    Log(string.Format("DONE CreateUDF: {0} added, {1} skipped", added, skipped));
+                }
+                else
+                {
+                    Log("WARN No UDF data found in source");
                 }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -386,68 +566,41 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_CreateUDF.Enabled = true;
+                EndTask();
             }
+        }
+
+        // SAP Service Layer hay trả -2004 "Table not found" ngay sau khi tạo UDT
+        // (bảng vật lý chưa kịp đăng ký trong ODBC). Retry vài lần thì hết.
+        private const int UdfRetryMax = 10;
+        private const int UdfRetryDelayMs = 5000;
+
+        private static bool IsTableNotFound(string content)
+        {
+            return !string.IsNullOrEmpty(content)
+                && (content.Contains("-2004") || content.Contains("Table not found"));
         }
 
         public string AddUdf(UserFieldsImpl field)
         {
             try
             {
-                var sb = new StringBuilder();
-                sb.Append("{");
-                sb.Append(Function.GetJsonString("Name", field.Name));
-                sb.Append(Function.GetJsonString("Size", field.Size));
-                sb.Append(Function.GetJsonString("Description", field.Description));
-                sb.Append(Function.GetJsonString("TableName", field.TableName));
-                sb.Append(Function.GetJsonString("FieldID", field.FieldID));
-                sb.Append(Function.GetJsonString("Mandatory", field.Mandatory));
-                sb.Append(Function.GetJsonString("Type", field.Type.ToString()));
-                sb.Append(Function.GetJsonString("SubType", field.SubType.ToString()));
-                sb.Append(Function.GetJsonString("EditSize", field.EditSize));
-
-                if (!string.IsNullOrEmpty(field.LinkedTable))
+                var json = BuildUdfJson(field);
+                IRestResponse response = null;
+                for (int attempt = 1; attempt <= UdfRetryMax; attempt++)
                 {
-                    sb.Append(Function.GetJsonString("LinkedTable", field.LinkedTable));
-                }
-                if (!string.IsNullOrEmpty(field.DefaultValue))
-                {
-                    sb.Append(Function.GetJsonString("DefaultValue", field.DefaultValue));
-                }
-                if (!string.IsNullOrEmpty(field.LinkedUDO))
-                {
-                    sb.Append(Function.GetJsonString("LinkedUDO", field.LinkedUDO));
-                }
-                if (!string.IsNullOrEmpty(field.LinkedObject))
-                {
-                    sb.Append(Function.GetJsonString("LinkedSystemObject", field.LinkedObject));
-                }
-                if (field.ValidValues != null && field.ValidValues.Count > 0)
-                {
-                    sb.Append(@"""ValidValuesMD"":[");
-                    foreach (var item in field.ValidValues)
+                    response = GetResponseService("UserFieldsMD", json);
+                    if (!IsTableNotFound(response.Content))
+                        break;
+                    if (Cancelled) break;
+                    if (attempt < UdfRetryMax)
                     {
-                        sb.Append(@"{");
-                        if (field.SubType == BoFldSubTypes.st_Time)
-                        {
-                            sb.Append(Function.GetJsonString("Value", Function.ParseInt(item.Value.Replace(":", "")).ToString("0000")));
-                        }
-                        else
-                        {
-                            sb.Append(Function.GetJsonString("Value", item.Value));
-                        }
-
-                        sb.Append(Function.GetJsonString("Description", item.Description));
-                        sb.Append(@"},");
+                        Log(string.Format("  RETRY UDF [{0}.{1}] table chưa sẵn sàng, thử lại {2}/{3} sau {4}s...",
+                            field.TableName, field.Name, attempt, UdfRetryMax - 1, UdfRetryDelayMs / 1000));
+                        System.Threading.Thread.Sleep(UdfRetryDelayMs);
                     }
-                    sb.Remove(sb.Length - 1, 1);
-                    sb.Append("]");
                 }
-                sb.Append(@"}");
-
-                var response = GetResponseService("UserFieldsMD", sb.ToString());
-
-                return field.TableName + "\t" + field.Name + "\t" + response.Content + (string.IsNullOrEmpty(response.Content) ? "" : "\n" + sb.ToString());
+                return field.TableName + "\t" + field.Name + "\t" + response.Content + (string.IsNullOrEmpty(response.Content) ? "" : "\n" + json);
             }
             catch (Exception ex)
             {
@@ -458,14 +611,17 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_LinkUDF_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("Liên kết UDF với UDO từ DB nguồn sang DB đích?", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
             try
             {
-                btn_LinkUDF.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
+                var udfNameText = txt_UDFName.Text;
                 await Task.Run(() =>
                 {
+                Log("START LinkUDF" + (string.IsNullOrEmpty(tableNameText) ? " - All tables" : " - " + tableNameText));
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(tableNameText))
                 {
@@ -504,8 +660,18 @@ namespace SAP.QuickCopyUDF
                 if (ds.Tables.Count > 0)
                 {
                     var dt = ds.Tables[0];
+                    if (!string.IsNullOrEmpty(udfNameText))
+                    {
+                        var udfFilter = ParseUdfNames(udfNameText);
+                        var matchRows = dt.AsEnumerable().Where(r => udfFilter.Contains(Function.ToString(r["AliasID"]))).ToList();
+                        Log(string.Format("FILTER UDF names: {0} match(es) of {1}", matchRows.Count, dt.Rows.Count));
+                        dt = matchRows.Count > 0 ? matchRows.CopyToDataTable() : dt.Clone();
+                    }
+                    Log(string.Format("LOAD {0} UDF(s) with UDO link from source", dt.Rows.Count));
+                    int linked = 0, notFound = 0;
                     foreach (DataRow item in dt.Rows)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                         var field = new UserFieldsImpl();
                         field.TableName = Function.ToString(item["TableID"]);
                         field.Name = Function.ToString(item["AliasID"]);
@@ -519,16 +685,24 @@ namespace SAP.QuickCopyUDF
                         }
                         else
                         {
-                            AppendLog(field.TableName + "\t" + field.Name + " not exists!");
+                            Log(string.Format("NOT FOUND UDF [{0}.{1}] in target", field.TableName, field.Name));
+                            notFound++;
                             continue;
                         }
 
+                        Log(string.Format("LINK UDF [{0}.{1}] -> UDO [{2}]...", field.TableName, field.Name, field.LinkedUDO));
                         var ret = LinkUdf(field);
-                        AppendLog(ret);
+                        Log("RESULT\t" + ret);
+                        linked++;
                     }
+                    Log(string.Format("DONE LinkUDF: {0} linked, {1} not found", linked, notFound));
+                }
+                else
+                {
+                    Log("WARN No UDF with UDO link found in source");
                 }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -537,7 +711,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_LinkUDF.Enabled = true;
+                EndTask();
             }
         }
 
@@ -571,14 +745,17 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_UpdateUDF_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("Cập nhật User Defined Field trên DB đích?", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
             try
             {
-                btn_UpdateUDF.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
+                var udfNameText = txt_UDFName.Text;
                 await Task.Run(() =>
                 {
+                Log("START UpdateUDF" + (string.IsNullOrEmpty(tableNameText) ? "" : " - " + tableNameText));
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(tableNameText))
                 {
@@ -597,8 +774,18 @@ namespace SAP.QuickCopyUDF
                 if (ds.Tables.Count > 0)
                 {
                     var dt = ds.Tables[0];
+                    if (!string.IsNullOrEmpty(udfNameText))
+                    {
+                        var udfFilter = ParseUdfNames(udfNameText);
+                        var matchRows = dt.AsEnumerable().Where(r => udfFilter.Contains(Function.ToString(r["AliasID"]))).ToList();
+                        Log(string.Format("FILTER UDF names: {0} match(es) of {1}", matchRows.Count, dt.Rows.Count));
+                        dt = matchRows.Count > 0 ? matchRows.CopyToDataTable() : dt.Clone();
+                    }
+                    Log(string.Format("LOAD {0} UDF(s) from source", dt.Rows.Count));
+                    int updated = 0;
                     foreach (DataRow item in dt.Rows)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                         var field = new UserFieldsImpl();
                         field.TableName = Function.ToString(item["TableID"]);
                         field.Name = Function.ToString(item["AliasID"]);
@@ -612,35 +799,8 @@ namespace SAP.QuickCopyUDF
                         field.Description = Function.ToString(item["Descr"]);
                         field.Mandatory = Function.ToString(item["NotNull"]) == "Y" ? BoYesNoEnum.tYES : BoYesNoEnum.tNO;
                         field.EditSize = Function.ParseInt(item["EditSize"]);
-                        var type = Function.ToString(item["TypeID"]);
-                        switch (type)
-                        {
-                            case "B": field.Type = BoFieldTypes.db_Float; break;
-                            case "M": field.Type = BoFieldTypes.db_Memo; break;
-                            case "D": field.Type = BoFieldTypes.db_Date; break;
-                            case "N": field.Type = BoFieldTypes.db_Numeric; break;
-                            default:
-                                field.Type = BoFieldTypes.db_Alpha;
-                                break;
-                        }
-                        var subType = Function.ToString(item["EditType"]);
-                        switch (subType)
-                        {
-                            case "S": field.SubType = BoFldSubTypes.st_Sum; break;
-                            case "P": field.SubType = BoFldSubTypes.st_Price; break;
-                            case "%": field.SubType = BoFldSubTypes.st_Percentage; break;
-                            case "Q": field.SubType = BoFldSubTypes.st_Quantity; break;
-                            case "T": field.SubType = BoFldSubTypes.st_Time; break;
-                            case "A": field.SubType = BoFldSubTypes.st_Address; break;
-                            case "M": field.SubType = BoFldSubTypes.st_Measurement; break;
-                            case "L": field.SubType = BoFldSubTypes.st_Link; break;
-                            case "R": field.SubType = BoFldSubTypes.st_Rate; break;
-                            case "B": field.SubType = BoFldSubTypes.st_Link; break;
-
-                            default:
-                                field.SubType = BoFldSubTypes.st_None;
-                                break;
-                        }
+                        field.Type = MapUdfType(Function.ToString(item["TypeID"]));
+                        field.SubType = MapUdfSubType(Function.ToString(item["EditType"]));
 
                         field.LinkedTable = Function.ToString(item["RTable"]);
                         field.DefaultValue = Function.ToString(item["Dflt"]);
@@ -663,14 +823,19 @@ namespace SAP.QuickCopyUDF
                             }
                         }
 
+                        Log(string.Format("UPDATE UDF [{0}.{1}]...", field.TableName, field.Name));
                         var ret = UpdateUdf(field);
-                        AppendLog(ret);
+                        Log("RESULT\t" + ret);
+                        updated++;
                     }
+                    Log(string.Format("DONE UpdateUDF: {0} updated", updated));
                 }
                 else
-                    AppendLog("Nhập danh sách bảng cần cập nhật UDF! lưu ý: ValidValue chỉ thêm được value chứ không cập nhật giá trị cũ");
+                {
+                    Log("WARN Nhập danh sách bảng cần cập nhật UDF! lưu ý: ValidValue chỉ thêm được value chứ không cập nhật giá trị cũ");
+                }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -679,7 +844,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_UpdateUDF.Enabled = true;
+                EndTask();
             }
         }
 
@@ -687,64 +852,10 @@ namespace SAP.QuickCopyUDF
         {
             try
             {
-                var sb = new StringBuilder();
-                sb.Append("{");
-                sb.Append(Function.GetJsonString("Name", field.Name));
-                sb.Append(Function.GetJsonString("Size", field.Size));
-                sb.Append(Function.GetJsonString("Description", field.Description));
-                sb.Append(Function.GetJsonString("TableName", field.TableName));
-                sb.Append(Function.GetJsonString("FieldID", field.FieldID));
-                sb.Append(Function.GetJsonString("Mandatory", field.Mandatory));
-                sb.Append(Function.GetJsonString("Type", field.Type.ToString()));
-                sb.Append(Function.GetJsonString("SubType", field.SubType.ToString()));
-                sb.Append(Function.GetJsonString("EditSize", field.EditSize));
-
-                if (!string.IsNullOrEmpty(field.LinkedTable))
-                {
-                    sb.Append(Function.GetJsonString("LinkedTable", field.LinkedTable));
-                }
-                if (!string.IsNullOrEmpty(field.DefaultValue))
-                {
-                    sb.Append(Function.GetJsonString("DefaultValue", field.DefaultValue));
-                }
-                if (!string.IsNullOrEmpty(field.LinkedUDO))
-                {
-                    sb.Append(Function.GetJsonString("LinkedUDO", field.LinkedUDO));
-                }
-                if (!string.IsNullOrEmpty(field.LinkedObject))
-                {
-                    sb.Append(Function.GetJsonString("LinkedSystemObject", field.LinkedObject));
-                }
-
-                if (field.ValidValues != null && field.ValidValues.Count > 0)
-                {
-                    sb.Append(@"""ValidValuesMD"":[");
-                    foreach (var item in field.ValidValues)
-                    {
-                        sb.Append(@"{");
-                        if (field.SubType == BoFldSubTypes.st_Time)
-                        {
-                            sb.Append(Function.GetJsonString("Value", Function.ParseInt(item.Value.Replace(":", "")).ToString("0000")));
-                        }
-                        else
-                        {
-                            sb.Append(Function.GetJsonString("Value", item.Value));
-                        }
-
-                        sb.Append(Function.GetJsonString("Description", item.Description));
-                        sb.Append(@"},");
-                    }
-                    sb.Remove(sb.Length - 1, 1);
-                    sb.Append("]");
-                }
-
-                sb.Append(@"}");
-
+                var json = BuildUdfJson(field);
                 var key = string.Format("(TableName='{0}',FieldID={1})", field.TableName, field.FieldID);
-
-                var response = GetResponseService("UserFieldsMD", sb.ToString(), Method.PATCH, key);
-
-                return field.TableName + "\t" + field.Name + "\t" + response.Content + (string.IsNullOrEmpty(response.Content) ? "" : "\n" + sb.ToString());
+                var response = GetResponseService("UserFieldsMD", json, Method.PATCH, key);
+                return field.TableName + "\t" + field.Name + "\t" + response.Content + (string.IsNullOrEmpty(response.Content) ? "" : "\n" + json);
             }
             catch (Exception ex)
             {
@@ -755,14 +866,17 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_DelUDF_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("XÓA User Defined Field trên DB đích? Thao tác này không thể hoàn tác!",
+                "Xác nhận XÓA", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
             try
             {
-                btn_DelUDF.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
+                var udfNameText = txt_UDFName.Text;
                 await Task.Run(() =>
                 {
+                    Log("START DeleteUDF" + (string.IsNullOrEmpty(tableNameText) ? "" : " - " + tableNameText));
                     var ds = new DataSet();
                     if (!string.IsNullOrEmpty(tableNameText))
                     {
@@ -776,19 +890,36 @@ namespace SAP.QuickCopyUDF
                     if (ds.Tables.Count > 0)
                     {
                         var dt = ds.Tables[0];
+                        if (!string.IsNullOrEmpty(udfNameText))
+                        {
+                            var udfFilter = ParseUdfNames(udfNameText);
+                            var matchRows = dt.AsEnumerable().Where(r => udfFilter.Contains(Function.ToString(r["AliasID"]))).ToList();
+                            Log(string.Format("FILTER UDF names: {0} match(es) of {1}", matchRows.Count, dt.Rows.Count));
+                            dt = matchRows.Count > 0 ? matchRows.CopyToDataTable() : dt.Clone();
+                        }
+                        Log(string.Format("LOAD {0} UDF(s) from source", dt.Rows.Count));
+                        int deleted = 0;
                         foreach (DataRow item in dt.Rows)
                         {
+                            if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                             var field = new UserFieldsImpl();
                             field.Name = Function.ToString(item["AliasID"]);
                             field.TableName = Function.ToString(item["TableID"]);
                             field.FieldID = Function.ParseInt(item["FieldID"]);
 
+                            Log(string.Format("DELETE UDF [{0}.{1}]...", field.TableName, field.Name));
                             var ret = DeleteUdf(field);
-                            AppendLog(ret);
+                            Log("RESULT\t" + ret);
+                            deleted++;
                         }
+                        Log(string.Format("DONE DeleteUDF: {0} deleted", deleted));
+                    }
+                    else
+                    {
+                        Log("WARN No UDF data found");
                     }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -797,7 +928,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_DelUDF.Enabled = true;
+                EndTask();
             }
         }
 
@@ -820,14 +951,16 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_CreateUDO_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("Tạo User Defined Object từ DB nguồn sang DB đích?\n(Sẽ tự động tạo UDT và UDF nếu chưa có)", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
             try
             {
-                btn_CreateUDO.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNameText = txt_TableName.Text;
                 await Task.Run(() =>
                 {
+                Log("START CreateUDO" + (string.IsNullOrEmpty(tableNameText) ? " - All" : " - " + tableNameText));
                 var ds = new DataSet();
                 if (!string.IsNullOrEmpty(tableNameText))
                 {
@@ -875,12 +1008,26 @@ namespace SAP.QuickCopyUDF
                 if (ds.Tables.Count > 0)
                 {
                     var dt = ds.Tables[0];
+                    Log(string.Format("LOAD {0} UDO(s) from source", dt.Rows.Count));
+                    int created = 0, updated = 0;
                     foreach (DataRow item in dt.Rows)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
+                        var code = Function.ToString(item["Code"]);
+                        var udoExists = CheckExistUDO(code);
+
+                        // Đảm bảo UDT tồn tại trước khi tạo UDO
+                        var udtTableName = Function.ToString(item["TableName"]);
+                        Log(string.Format("CHECK UDTs for UDO [{0}]...", code));
+                        EnsureUdtExists(udtTableName);
+                        foreach (DataRow childRow in ds.Tables[1].AsEnumerable()
+                            .Where(t => Function.ToString(t["Code"]) == code))
+                            EnsureUdtExists(Function.ToString(childRow["TableName"]));
+
                         var udo = new UserObjectsImpl();
-                        udo.Code = Function.ToString(item["Code"]);
+                        udo.Code = code;
                         udo.Name = Function.ToString(item["Name"]);
-                        udo.TableName = Function.ToString(item["TableName"]);
+                        udo.TableName = udtTableName;
                         udo.LogTableName = Function.ToString(item["LogTable"]);
                         udo.ObjectType = Function.ToString(item["TYPE"]) == "1" ? BoUDOObjType.boud_MasterData : BoUDOObjType.boud_Document;
                         udo.ManageSeries = Function.ToString(item["MngSeries"]) == "Y" ? BoYesNoEnum.tYES : BoYesNoEnum.tNO;
@@ -972,21 +1119,29 @@ namespace SAP.QuickCopyUDF
                                 udo.EnhancedFormColumns.Add(obj);
                             }
                         }
-                        //kiểm tra UDO đã có hay chưa, nếu chưa thì add
-                        if (!CheckExistUDO(udo.Code))
+                        string ret;
+                        if (udoExists)
                         {
-                            var ret = AddUdo(udo);
-                            AppendLog("ADD UDO\t" + ret);
+                            Log(string.Format("UPDATE UDO [{0}] (already exists)...", code));
+                            ret = UpdateUdo(udo);
+                            updated++;
                         }
                         else
                         {
-                            var ret = UpdateUdo(udo);
-                            AppendLog("UPDATE UDO\t" + ret);
+                            Log(string.Format("CREATE UDO [{0}]...", code));
+                            ret = AddUdo(udo);
+                            created++;
                         }
+                        Log("RESULT\t" + ret);
                     }
+                    Log(string.Format("DONE CreateUDO: {0} created, {1} updated", created, updated));
+                }
+                else
+                {
+                    Log("WARN No UDO data found in source");
                 }
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -995,7 +1150,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_CreateUDO.Enabled = true;
+                EndTask();
             }
         }
 
@@ -1249,6 +1404,157 @@ namespace SAP.QuickCopyUDF
                 richTextBox1.AppendText("\n" + text);
         }
 
+        private void Log(string message, bool isError = false)
+        {
+            var line = string.Format("[{0:HH:mm:ss}] {1}", DateTime.Now, message);
+            AppendLog(line);
+            Logging.Write(isError ? Logging.ERROR : Logging.TRACE, line);
+        }
+
+        // Quản lý trạng thái tác vụ đang chạy + hủy
+        private System.Threading.CancellationTokenSource _cts;
+        private System.Collections.Generic.Dictionary<Button, bool> _savedBtnState;
+
+        private bool Cancelled
+        {
+            get { return _cts != null && _cts.IsCancellationRequested; }
+        }
+
+        private Button[] OperationButtons
+        {
+            get
+            {
+                return new[]
+                {
+                    btn_CreateUDT, btn_CreateUDF, btn_CreateUDO, btn_LinkUDF,
+                    btn_UpdateUDF, btn_DelUDF, btn_CopyData, btn_DelCopy,
+                    btn_Login, btn_LogOut, btn_CopyUDOManual,
+                    btn_TestSource, btn_TestTarget, btn_CopyManual
+                };
+            }
+        }
+
+        private void SetBusy(bool busy)
+        {
+            if (InvokeRequired) { Invoke((Action)(() => SetBusy(busy))); return; }
+            if (busy)
+            {
+                _savedBtnState = OperationButtons.ToDictionary(b => b, b => b.Enabled);
+                foreach (var b in OperationButtons) b.Enabled = false;
+                btn_Cancel.Enabled = true;
+            }
+            else
+            {
+                btn_Cancel.Enabled = false;
+                if (_savedBtnState != null)
+                    foreach (var kv in _savedBtnState) kv.Key.Enabled = kv.Value;
+            }
+        }
+
+        private void BeginTask()
+        {
+            _cts = new System.Threading.CancellationTokenSource();
+            richTextBox1.Clear();
+            SetBusy(true);
+        }
+
+        private void EndTask()
+        {
+            SetBusy(false);
+            if (_cts != null) { _cts.Dispose(); _cts = null; }
+        }
+
+        private void btn_Cancel_Click(object sender, EventArgs e)
+        {
+            if (_cts == null || _cts.IsCancellationRequested) return;
+            if (MessageBox.Show("Bạn có chắc muốn hủy tác vụ đang chạy?", "Xác nhận hủy",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.No) return;
+            _cts.Cancel();
+            btn_Cancel.Enabled = false;
+            Log("CANCEL - đang dừng tác vụ, vui lòng đợi bước hiện tại hoàn tất...");
+        }
+
+        private static BoFieldTypes MapUdfType(string typeCode)
+        {
+            switch (typeCode)
+            {
+                case "B": return BoFieldTypes.db_Float;
+                case "M": return BoFieldTypes.db_Memo;
+                case "D": return BoFieldTypes.db_Date;
+                case "N": return BoFieldTypes.db_Numeric;
+                default:  return BoFieldTypes.db_Alpha;
+            }
+        }
+
+        private static BoFldSubTypes MapUdfSubType(string subTypeCode)
+        {
+            switch (subTypeCode)
+            {
+                case "S": return BoFldSubTypes.st_Sum;
+                case "P": return BoFldSubTypes.st_Price;
+                case "%": return BoFldSubTypes.st_Percentage;
+                case "Q": return BoFldSubTypes.st_Quantity;
+                case "T": return BoFldSubTypes.st_Time;
+                case "A": return BoFldSubTypes.st_Address;
+                case "M": return BoFldSubTypes.st_Measurement;
+                case "L": return BoFldSubTypes.st_Link;
+                case "R": return BoFldSubTypes.st_Rate;
+                case "B": return BoFldSubTypes.st_Link;
+                default:  return BoFldSubTypes.st_None;
+            }
+        }
+
+        private static string BuildUdfJson(UserFieldsImpl field)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{");
+            sb.Append(Function.GetJsonString("Name", field.Name));
+            sb.Append(Function.GetJsonString("Size", field.Size));
+            sb.Append(Function.GetJsonString("Description", field.Description));
+            sb.Append(Function.GetJsonString("TableName", field.TableName));
+            sb.Append(Function.GetJsonString("FieldID", field.FieldID));
+            sb.Append(Function.GetJsonString("Mandatory", field.Mandatory));
+            sb.Append(Function.GetJsonString("Type", field.Type.ToString()));
+            sb.Append(Function.GetJsonString("SubType", field.SubType.ToString()));
+            sb.Append(Function.GetJsonString("EditSize", field.EditSize));
+            if (!string.IsNullOrEmpty(field.LinkedTable))
+                sb.Append(Function.GetJsonString("LinkedTable", field.LinkedTable));
+            if (!string.IsNullOrEmpty(field.DefaultValue))
+                sb.Append(Function.GetJsonString("DefaultValue", field.DefaultValue));
+            if (!string.IsNullOrEmpty(field.LinkedUDO))
+                sb.Append(Function.GetJsonString("LinkedUDO", field.LinkedUDO));
+            if (!string.IsNullOrEmpty(field.LinkedObject))
+                sb.Append(Function.GetJsonString("LinkedSystemObject", field.LinkedObject));
+            if (field.ValidValues != null && field.ValidValues.Count > 0)
+            {
+                sb.Append(@"""ValidValuesMD"":[");
+                foreach (var item in field.ValidValues)
+                {
+                    sb.Append(@"{");
+                    if (field.SubType == BoFldSubTypes.st_Time)
+                        sb.Append(Function.GetJsonString("Value", Function.ParseInt(item.Value.Replace(":", "")).ToString("0000")));
+                    else
+                        sb.Append(Function.GetJsonString("Value", item.Value));
+                    sb.Append(Function.GetJsonString("Description", item.Description));
+                    sb.Append(@"},");
+                }
+                sb.Remove(sb.Length - 1, 1);
+                sb.Append("]");
+            }
+            sb.Append(@"}");
+            return sb.ToString();
+        }
+
+        private static HashSet<string> ParseUdfNames(string text)
+        {
+            return new HashSet<string>(
+                text.Split(',')
+                    .Select(s => s.Trim())
+                    .Where(s => !string.IsNullOrEmpty(s))
+                    .Select(s => s.StartsWith("U_", StringComparison.OrdinalIgnoreCase) ? s.Substring(2) : s),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
         private IRestResponse GetResponseService(string serviceName, string jsonString, Method method = Method.POST, string key = "")
         {
             var ServiceAddress = _serviceAddress;
@@ -1276,18 +1582,22 @@ namespace SAP.QuickCopyUDF
 
         private async void btn_CopyData_Click(object sender, EventArgs e)
         {
+            if (MessageBox.Show("Copy dữ liệu từ DB nguồn sang DB đích?\nDữ liệu đích sẽ bị ghi đè!", "Xác nhận",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.No) return;
             try
             {
-                btn_CopyData.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
                 await Task.Run(() =>
                 {
+                    Log("START CopyData - " + tableNames);
                     var lstTable = tableNames.Split(',').ToList();
                     foreach (var table in lstTable)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                         var dt = new DataTable();
+                        Log(string.Format("LOAD [{0}] from source...", table));
                         if (sourceType.Equals("S"))
                             dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
                         else
@@ -1295,16 +1605,18 @@ namespace SAP.QuickCopyUDF
 
                         if (dt.IsNotNull())
                         {
+                            Log(string.Format("COPY [{0}] {1} row(s)...", table, dt.Rows.Count));
                             var ret = _httpClient.BulkCopy(dt, table);
-                            AppendLog(table + "\t" + dt.Rows.Count + "\t" + ret);
+                            Log(string.Format("RESULT [{0}]\t{1} rows\t{2}", table, dt.Rows.Count, ret));
                         }
                         else
                         {
-                            AppendLog(table + "\tData is Empty!");
+                            Log(string.Format("SKIP [{0}] Data is Empty!", table));
                         }
                     }
+                    Log("DONE CopyData");
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -1313,7 +1625,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_CopyData.Enabled = true;
+                EndTask();
             }
         }
 
@@ -1323,17 +1635,18 @@ namespace SAP.QuickCopyUDF
                 return;
             try
             {
-                btn_CopyData.Enabled = false;
-                btn_DelCopy.Enabled = false;
-                richTextBox1.Clear();
+                BeginTask();
                 GetConnectionString();
                 var tableNames = txt_TableName.Text;
                 await Task.Run(() =>
                 {
+                    Log("START DelCopy - " + tableNames);
                     var lstTable = tableNames.Split(',').ToList();
                     foreach (var table in lstTable)
                     {
+                        if (Cancelled) { Log("CANCELLED bởi người dùng"); break; }
                         var dt = new DataTable();
+                        Log(string.Format("LOAD [{0}] from source...", table));
                         if (sourceType.Equals("S"))
                             dt = ExecuteDataTable(string.Format("SELECT * FROM \"{0}\"; ", table));
                         else
@@ -1341,19 +1654,22 @@ namespace SAP.QuickCopyUDF
 
                         if (dt.IsNotNull())
                         {
+                            Log(string.Format("DELETE [{0}] target rows...", table));
                             var rowDel = _httpClient.ExecuteNonQuery(string.Format("DELETE FROM \"{0}\";", table));
-                            AppendLog(table + "\tDeleted rows:\t" + rowDel);
+                            Log(string.Format("DELETED [{0}]\t{1} rows", table, rowDel));
 
+                            Log(string.Format("COPY [{0}] {1} row(s)...", table, dt.Rows.Count));
                             var ret = _httpClient.BulkCopy(dt, table);
-                            AppendLog(table + "\t" + dt.Rows.Count + "\t" + ret);
+                            Log(string.Format("RESULT [{0}]\t{1} rows\t{2}", table, dt.Rows.Count, ret));
                         }
                         else
                         {
-                            AppendLog(table + "\tData is Empty!");
+                            Log(string.Format("SKIP [{0}] Data is Empty!", table));
                         }
                     }
+                    Log("DONE DelCopy");
                 });
-                MessageBox.Show("DONE");
+                MessageBox.Show(Cancelled ? "Đã hủy tác vụ" : "DONE");
             }
             catch (Exception ex)
             {
@@ -1362,8 +1678,7 @@ namespace SAP.QuickCopyUDF
             }
             finally
             {
-                btn_CopyData.Enabled = true;
-                btn_DelCopy.Enabled = true;
+                EndTask();
             }
         }
 

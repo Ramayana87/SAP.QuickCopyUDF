@@ -101,35 +101,7 @@ namespace SAP.QuickCopyUDF
 
         public int ExecuteNonQueryNoParam(string query, CommandType commandType = CommandType.Text)
         {
-            if (DbConnection != null && !string.IsNullOrEmpty(DbConnection.ConnectionString) && DbConnection.State != ConnectionState.Closed)
-            {
-                using (var command = DbConnection.CreateCommand())
-                {
-                    command.CommandTimeout = 60000;
-                    command.CommandText = commandType == CommandType.Text ? string.Format(@"DO BEGIN 
-                                                    {0}
-                                            end;", query) : query;
-                    command.Transaction = DbTransaction;
-                    command.CommandType = commandType;
-                    return command.ExecuteNonQuery();
-                }
-            }
-            using (var conn = new HanaConnection(ConnectionString))
-            {
-                if (conn.State == ConnectionState.Closed)
-                {
-                    conn.Open();
-                }
-                var command = conn.CreateCommand();
-                command.CommandTimeout = 60000;
-                command.CommandText = commandType == CommandType.Text ? string.Format(@"DO BEGIN 
-                                                                            {0}
-                                                    end;", query) : query;
-                command.CommandType = commandType;
-                var result = command.ExecuteNonQuery();
-                //HanaConnection.ClearPool(conn);
-                return result;
-            }
+            return ExecuteNonQuery(query, commandType);
         }
 
         public object ExecuteScalar(string query, CommandType commandType = CommandType.Text, params SqlParameter[] parameters)
