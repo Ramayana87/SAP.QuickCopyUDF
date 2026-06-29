@@ -1,6 +1,0 @@
-[ERROR]	2023-01-03	14:15:31:630	invalid column name: TABLEID: line 3 col 106 (at pos 190)	SAP.QuickCopyUDF.frm_Main>	229
-[ERROR]	2023-01-03	14:16:03:559	invalid column name: TABLEID: line 3 col 106 (at pos 190)	SAP.QuickCopyUDF.frm_Main>	229
-[ERROR]	2023-01-03	16:03:42:511	Cannot open database "VHM_TEST" requested by the login. The login failed.
-Login failed for user 'sa'.	SAP.QuickCopyUDF.frm_Main>	229
-[ERROR]	2023-01-03	16:05:06:545	Cannot open database "VHM_TEST" requested by the login. The login failed.
-Login failed for user 'sa'.	SAP.QuickCopyUDF.frm_Main>	229

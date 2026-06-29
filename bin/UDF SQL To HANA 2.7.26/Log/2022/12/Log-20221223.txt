@@ -1,1 +1,0 @@
-[ERROR]	2022-12-23	09:05:25:826	Connection failed (RTE:[89008] Socket closed by peer (172.16.8.40:50000))	SAP.QuickCopyUDF.frm_Main>	961
