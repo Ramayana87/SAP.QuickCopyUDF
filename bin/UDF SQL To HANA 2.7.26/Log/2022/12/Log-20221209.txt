@@ -1,1 +1,0 @@
-[ERROR]	2022-12-09	14:41:20:429	 SAP.QuickCopyUDF.DatabaseHanaClient.ExecuteDataTable(String query, CommandType commandType, SqlParameter[] parameters)	SELECT * FROM UFD1 WHERE TableID IN ('@OSHP'); 	invalid column name: TABLEID: line 3 col 110 (at pos 194)

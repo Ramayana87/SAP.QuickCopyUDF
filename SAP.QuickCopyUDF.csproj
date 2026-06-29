@@ -59,9 +59,9 @@
     <Reference Include="RestSharp">
       <HintPath>E:\03.GIT\irs-winform-devexpress-20\Apzon.DataServices\bin\Debug\RestSharp.dll</HintPath>
     </Reference>
-    <Reference Include="Sap.Data.Hana.v4.5, Version=1.0.120.0, Culture=neutral, PublicKeyToken=0326b8ea63db4bc4, processorArchitecture=MSIL">
+    <Reference Include="Sap.Data.Hana.v4.5, Version=2.21.28.0, Culture=neutral, PublicKeyToken=0326b8ea63db4bc4, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
-      <HintPath>dll\Sap.Data.Hana.v4.5.dll</HintPath>
+      <HintPath>dll\hana 2.7.26\Sap.Data.Hana.v4.5.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.DataAnnotations" />

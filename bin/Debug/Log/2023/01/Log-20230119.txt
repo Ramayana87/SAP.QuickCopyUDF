@@ -1,1 +1,0 @@
-[ERROR]	2023-01-19	09:49:09:883	Invalid object name ' APZ_OURI'.	SAP.QuickCopyUDF.frm_Main>	1083

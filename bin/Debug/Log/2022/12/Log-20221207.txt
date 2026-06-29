@@ -1,3 +1,0 @@
-[ERROR]	2022-12-07	15:49:14:996	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 270)	SAP.QuickCopyUDF.frm_Main>	874
-[ERROR]	2022-12-07	15:49:39:314	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 270)	SAP.QuickCopyUDF.frm_Main>	874
-[ERROR]	2022-12-07	15:50:26:668	sql syntax error: incorrect syntax near "end": line 4 col 73 (at pos 270)	SAP.QuickCopyUDF.frm_Main>	874

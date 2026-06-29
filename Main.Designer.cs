@@ -37,6 +37,7 @@ namespace SAP.QuickCopyUDF
             this.labelControl1 = new DevExpress.XtraEditors.LabelControl();
             this.txt_Sql_Server = new System.Windows.Forms.TextBox();
             this.btn_Clear = new System.Windows.Forms.Button();
+            this.btn_Cancel = new System.Windows.Forms.Button();
             this.txt_Sql_Database = new System.Windows.Forms.TextBox();
             this.labelControl2 = new DevExpress.XtraEditors.LabelControl();
             this.txt_Sql_Pass = new System.Windows.Forms.TextBox();
@@ -71,12 +72,14 @@ namespace SAP.QuickCopyUDF
             this.btn_DelCopy = new System.Windows.Forms.Button();
             this.btn_UpdateUDF = new System.Windows.Forms.Button();
             this.btn_CopyUDOManual = new System.Windows.Forms.Button();
+            this.txt_UDFName = new System.Windows.Forms.TextBox();
+            this.labelControl13 = new DevExpress.XtraEditors.LabelControl();
             ((System.ComponentModel.ISupportInitialize)(this.txtServerType.Properties)).BeginInit();
             this.SuspendLayout();
             // 
             // btn_CreateUDT
             // 
-            this.btn_CreateUDT.Location = new System.Drawing.Point(127, 174);
+            this.btn_CreateUDT.Location = new System.Drawing.Point(121, 194);
             this.btn_CreateUDT.Name = "btn_CreateUDT";
             this.btn_CreateUDT.Size = new System.Drawing.Size(105, 23);
             this.btn_CreateUDT.TabIndex = 1;
@@ -86,7 +89,7 @@ namespace SAP.QuickCopyUDF
             // 
             // btn_CreateUDF
             // 
-            this.btn_CreateUDF.Location = new System.Drawing.Point(238, 174);
+            this.btn_CreateUDF.Location = new System.Drawing.Point(232, 194);
             this.btn_CreateUDF.Name = "btn_CreateUDF";
             this.btn_CreateUDF.Size = new System.Drawing.Size(105, 23);
             this.btn_CreateUDF.TabIndex = 2;
@@ -96,7 +99,7 @@ namespace SAP.QuickCopyUDF
             // 
             // btn_Login
             // 
-            this.btn_Login.Location = new System.Drawing.Point(16, 174);
+            this.btn_Login.Location = new System.Drawing.Point(10, 194);
             this.btn_Login.Name = "btn_Login";
             this.btn_Login.Size = new System.Drawing.Size(105, 23);
             this.btn_Login.TabIndex = 3;
@@ -109,15 +112,15 @@ namespace SAP.QuickCopyUDF
             this.richTextBox1.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
             | System.Windows.Forms.AnchorStyles.Left) 
             | System.Windows.Forms.AnchorStyles.Right)));
-            this.richTextBox1.Location = new System.Drawing.Point(0, 203);
+            this.richTextBox1.Location = new System.Drawing.Point(0, 223);
             this.richTextBox1.Name = "richTextBox1";
-            this.richTextBox1.Size = new System.Drawing.Size(1066, 529);
+            this.richTextBox1.Size = new System.Drawing.Size(1066, 509);
             this.richTextBox1.TabIndex = 5;
             this.richTextBox1.Text = "";
             // 
             // btn_CreateUDO
             // 
-            this.btn_CreateUDO.Location = new System.Drawing.Point(349, 174);
+            this.btn_CreateUDO.Location = new System.Drawing.Point(343, 194);
             this.btn_CreateUDO.Name = "btn_CreateUDO";
             this.btn_CreateUDO.Size = new System.Drawing.Size(105, 23);
             this.btn_CreateUDO.TabIndex = 6;
@@ -143,13 +146,26 @@ namespace SAP.QuickCopyUDF
             // btn_Clear
             // 
             this.btn_Clear.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.btn_Clear.Location = new System.Drawing.Point(973, 174);
+            this.btn_Clear.Location = new System.Drawing.Point(967, 194);
             this.btn_Clear.Name = "btn_Clear";
             this.btn_Clear.Size = new System.Drawing.Size(80, 23);
             this.btn_Clear.TabIndex = 9;
             this.btn_Clear.Text = "Clear";
             this.btn_Clear.UseVisualStyleBackColor = true;
             this.btn_Clear.Click += new System.EventHandler(this.btn_Clear_Click);
+            // 
+            // btn_Cancel
+            // 
+            this.btn_Cancel.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
+            this.btn_Cancel.BackColor = System.Drawing.Color.MistyRose;
+            this.btn_Cancel.Enabled = false;
+            this.btn_Cancel.Location = new System.Drawing.Point(770, 194);
+            this.btn_Cancel.Name = "btn_Cancel";
+            this.btn_Cancel.Size = new System.Drawing.Size(80, 23);
+            this.btn_Cancel.TabIndex = 46;
+            this.btn_Cancel.Text = "Cancel";
+            this.btn_Cancel.UseVisualStyleBackColor = false;
+            this.btn_Cancel.Click += new System.EventHandler(this.btn_Cancel_Click);
             // 
             // txt_Sql_Database
             // 
@@ -258,7 +274,7 @@ namespace SAP.QuickCopyUDF
             // 
             // btn_LinkUDF
             // 
-            this.btn_LinkUDF.Location = new System.Drawing.Point(460, 174);
+            this.btn_LinkUDF.Location = new System.Drawing.Point(454, 194);
             this.btn_LinkUDF.Name = "btn_LinkUDF";
             this.btn_LinkUDF.Size = new System.Drawing.Size(90, 23);
             this.btn_LinkUDF.TabIndex = 24;
@@ -293,7 +309,7 @@ namespace SAP.QuickCopyUDF
             // 
             // btn_DelUDF
             // 
-            this.btn_DelUDF.Location = new System.Drawing.Point(644, 174);
+            this.btn_DelUDF.Location = new System.Drawing.Point(638, 194);
             this.btn_DelUDF.Name = "btn_DelUDF";
             this.btn_DelUDF.Size = new System.Drawing.Size(90, 23);
             this.btn_DelUDF.TabIndex = 28;
@@ -403,7 +419,7 @@ namespace SAP.QuickCopyUDF
             // btn_LogOut
             // 
             this.btn_LogOut.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-            this.btn_LogOut.Location = new System.Drawing.Point(862, 174);
+            this.btn_LogOut.Location = new System.Drawing.Point(856, 194);
             this.btn_LogOut.Name = "btn_LogOut";
             this.btn_LogOut.Size = new System.Drawing.Size(105, 23);
             this.btn_LogOut.TabIndex = 44;
@@ -423,7 +439,7 @@ namespace SAP.QuickCopyUDF
             // 
             // btn_UpdateUDF
             // 
-            this.btn_UpdateUDF.Location = new System.Drawing.Point(556, 174);
+            this.btn_UpdateUDF.Location = new System.Drawing.Point(550, 194);
             this.btn_UpdateUDF.Name = "btn_UpdateUDF";
             this.btn_UpdateUDF.Size = new System.Drawing.Size(82, 23);
             this.btn_UpdateUDF.TabIndex = 46;
@@ -441,11 +457,28 @@ namespace SAP.QuickCopyUDF
             this.btn_CopyUDOManual.UseVisualStyleBackColor = true;
             this.btn_CopyUDOManual.Click += new System.EventHandler(this.btn_CopyUDOManual_Click);
             // 
+            // txt_UDFName
+            // 
+            this.txt_UDFName.Location = new System.Drawing.Point(106, 168);
+            this.txt_UDFName.Name = "txt_UDFName";
+            this.txt_UDFName.Size = new System.Drawing.Size(541, 20);
+            this.txt_UDFName.TabIndex = 50;
+            // 
+            // labelControl13
+            // 
+            this.labelControl13.Location = new System.Drawing.Point(25, 175);
+            this.labelControl13.Name = "labelControl13";
+            this.labelControl13.Size = new System.Drawing.Size(48, 13);
+            this.labelControl13.TabIndex = 49;
+            this.labelControl13.Text = "UDF Copy";
+            // 
             // frm_Main
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1066, 732);
+            this.Controls.Add(this.txt_UDFName);
+            this.Controls.Add(this.labelControl13);
             this.Controls.Add(this.btn_CopyUDOManual);
             this.Controls.Add(this.btn_UpdateUDF);
             this.Controls.Add(this.btn_DelCopy);
@@ -480,6 +513,7 @@ namespace SAP.QuickCopyUDF
             this.Controls.Add(this.labelControl4);
             this.Controls.Add(this.txt_Sql_Database);
             this.Controls.Add(this.labelControl2);
+            this.Controls.Add(this.btn_Cancel);
             this.Controls.Add(this.btn_Clear);
             this.Controls.Add(this.txt_Sql_Server);
             this.Controls.Add(this.labelControl1);
@@ -506,6 +540,7 @@ namespace SAP.QuickCopyUDF
         private DevExpress.XtraEditors.LabelControl labelControl1;
         private System.Windows.Forms.TextBox txt_Sql_Server;
         private System.Windows.Forms.Button btn_Clear;
+        private System.Windows.Forms.Button btn_Cancel;
         private System.Windows.Forms.TextBox txt_Sql_Database;
         private DevExpress.XtraEditors.LabelControl labelControl2;
         private System.Windows.Forms.TextBox txt_Sql_Pass;
@@ -540,6 +575,8 @@ namespace SAP.QuickCopyUDF
         private System.Windows.Forms.Button btn_DelCopy;
         private System.Windows.Forms.Button btn_UpdateUDF;
         private System.Windows.Forms.Button btn_CopyUDOManual;
+        private System.Windows.Forms.TextBox txt_UDFName;
+        private DevExpress.XtraEditors.LabelControl labelControl13;
     }
 }
 
